@@ -1,0 +1,22 @@
+[
+    {
+        "id_admin": "adbac4a7-43f0-4112-b13b-d58be8adbef3",
+        "hashed_password": "$2b$12$Qp9skCst4sGyOd4gdcsmtefEpSOTJ5IrhVCf579dD649FOdWgAduy",
+        "username": "admin"
+    },
+    {
+        "id_admin": "d249d261-185a-4754-9cf1-08ca47b57a68",
+        "hashed_password": "$2b$12$AY9RBBuZIAee2hWL0tQZKOmlPQjWTS2M/X/nzX11.mLriYxT6fvNS",
+        "username": "aarongomeznoyola093@gmail.com"
+    },
+    {
+        "id_admin": "284bdf4f-ab54-4024-b794-6d3fe6552489",
+        "hashed_password": "$2b$12$NCvDXu5Z56YYWR9Zvp/pTudreU/lD8UEdxcVtgCg.lsvCbljdaz6a",
+        "username": "aarongomeznoyola093@gmail.com"
+    },
+    {
+        "id_admin": "3e9030bd-bc61-4a44-a530-4a0982e55c4e",
+        "hashed_password": "$2b$12$FP.iZu7r5q47DqTslT2PP.JYer24DJ6CPLfNAGK0V/gQqn5n8DDhK",
+        "username": "aarongomeznoyola093@gmail.com"
+    }
+]

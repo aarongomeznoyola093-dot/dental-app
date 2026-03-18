@@ -1,0 +1,30 @@
+[
+    {
+        "id_paciente": "6cac2e81-3b03-4278-a75f-b4b8d678dd70",
+        "id_cita": "cf465373-5232-4857-b627-2b651c96a72b",
+        "estado": "programada",
+        "fecha_hora": "2025-11-13T17:30:00",
+        "motivo": "ortodoncia"
+    },
+    {
+        "id_paciente": "cf465373-5232-4857-b627-2b651c96a72b",
+        "id_cita": "96c1a546-8438-434d-a801-4ad526ca7958",
+        "estado": "programada",
+        "fecha_hora": "2025-11-20T20:40:00",
+        "motivo": "revision"
+    },
+    {
+        "id_paciente": "fa193dc0-6e9f-4dc7-8ec2-c536c6301aa0",
+        "id_cita": "34e72943-6234-45cb-984b-05fcab1acc00",
+        "estado": "programada",
+        "fecha_hora": "2025-11-15T14:30:00",
+        "motivo": "ortodoncia"
+    },
+    {
+        "id_paciente": "fa193dc0-6e9f-4dc7-8ec2-c536c6301aa0",
+        "id_cita": "7715a1bd-dfea-438e-a063-1c522937ed47",
+        "estado": "programada",
+        "fecha_hora": "2025-11-13T14:30:00",
+        "motivo": "ortodoncia"
+    }
+]

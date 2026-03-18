@@ -1,0 +1,56 @@
+[
+    {
+        "id_paciente": "6cac2e81-3b03-4278-a75f-b4b8d678dd70",
+        "alergias": [
+            "ninguna"
+        ],
+        "apellido_mat": "noyola",
+        "apellido_pat": "gomez",
+        "edad": 21,
+        "enfermedades": [
+            "ninguna"
+        ],
+        "fecha_nacimiento": "2015-05-05",
+        "medicamentos": [
+            "ninguna"
+        ],
+        "nombre": "aaron",
+        "telefono": "5572784479"
+    },
+    {
+        "id_paciente": "9e212f57-5726-4232-a247-08c44adef53b",
+        "alergias": [
+            "ninguna"
+        ],
+        "apellido_mat": "Noyola",
+        "apellido_pat": "Gómez",
+        "edad": 12,
+        "enfermedades": [
+            "ninguna"
+        ],
+        "fecha_nacimiento": "2019-06-11",
+        "medicamentos": [
+            "ninguna"
+        ],
+        "nombre": "Aarón Valentín",
+        "telefono": "5572784479"
+    },
+    {
+        "id_paciente": "fa193dc0-6e9f-4dc7-8ec2-c536c6301aa0",
+        "alergias": [
+            "ibuprofeno"
+        ],
+        "apellido_mat": "sol",
+        "apellido_pat": "garcia",
+        "edad": 15,
+        "enfermedades": [
+            "ninguna"
+        ],
+        "fecha_nacimiento": "2018-02-09",
+        "medicamentos": [
+            "enalapril"
+        ],
+        "nombre": "marco",
+        "telefono": "5566778899"
+    }
+]

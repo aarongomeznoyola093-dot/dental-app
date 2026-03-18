@@ -1,0 +1,12 @@
+[
+    {
+        "id_tratamiento": "d239f1f6-239b-4ae1-8abb-a2e9cd43513a",
+        "categoria": "Prevención",
+        "descripcion": "aplicacion y costo",
+        "duracion_estimada": {
+            "minutos": 30
+        },
+        "nombre": "aplicar fluor",
+        "precio": 450.0
+    }
+]

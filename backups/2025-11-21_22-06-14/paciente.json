@@ -1,0 +1,13 @@
+[
+    {
+        "id_paciente": "6cac2e81-3b03-4278-a75f-b4b8d678dd70",
+        "alergias": [
+            "ninguna"
+        ],
+        "apellido_mat": "noyola",
+        "apellido_pat": "gomez",
+        "edad": 21,
+        "enfermedades": [
+            "ninguna"
+        ],
+        "fecha_nacimiento": 

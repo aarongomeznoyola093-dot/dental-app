@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dental Criss</title>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f7f6; color: #333; }
+        header { background-color: #6a5acd; color: white; padding: 1.5rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        main { display: block; }
+        #vistaPrincipal, #vistaHistorial { padding: 1.5rem; max-width: 900px; margin: 2rem auto; }
+        section { background: white; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; border-bottom: 2px solid #6a5acd; padding-bottom: 0.5rem; margin-top: 0; }
+        form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+        input, select, textarea, button { padding: 0.8rem; border-radius: 4px; border: 1px solid #ccc; font-size: 1rem; width: 100%; box-sizing: border-box; }
+        label { font-weight: bold; margin-bottom: -0.5rem; font-size: 0.9em; color: #555; }
+        button { background-color: #6a5acd; color: white; cursor: pointer; border: none; grid-column: 1 / -1; font-weight: bold; transition: background-color 0.2s; }
+        button:hover { background-color: #5948b1; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+        .fila-clicable:hover { background-color: #e9e6f9; cursor: pointer; }
+        #vistaHistorial { display: none; background: white; border-radius: 8px; }
+        .btn-accion { margin-right: 10px; margin-bottom: 1rem; width: auto; padding: 0.8rem 1.2rem; font-weight: bold; border: none; cursor: pointer; border-radius: 4px; }
+        .btn-editar-paciente { background-color: #ffc107; color: black; }
+        .btn-editar-paciente:hover { background-color: #e0a800; }
+        .btn-eliminar-paciente { background-color: #dc3545; color: white; }
+        .btn-eliminar-paciente:hover { background-color: #c82333; }
+        .btn-volver { background-color: #6c757d; color: white; }
+        .btn-volver:hover { background-color: #5a6268; }
+        code { background-color: #eee; padding: 2px 6px; border-radius: 4px; }
+
+    </style>
+</head>
+<body style="display: none;">
+
+ <script>
+        const token = sessionStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/login.html';
+        } else {
+            document.body.style.display = 'block';
+        }
+    </script>
+    
+    <header>
+        <img src="/app/imagenes/imagen2.png" alt="Logo Dental Criss" id="logo-header">
+        <h1>Dental Criss</h1>
+    </header>
+    
+    <main id="vistaPrincipal">
+
+        <section id="seccionCalendario">
+            <h2>Calendario de Citas</h2>
+            <div id="calendario" style="background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <p>Cargando calendario...</p>
+            </div>
+        </section>
+
+<section id="dashboard">
+    <button id="btnGenerarReporte" style="background-color: #4CAF50; margin-top: 1rem;">📄 Generar Reporte Mensual</button>
+    <h2>Resumen del Mes</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card-stat" style="background: #e3f2fd; padding: 1.5rem; border-radius: 8px; text-align: center;">
+            <h3>Pacientes Totales</h3>
+            <p id="dashPacientes" style="font-size: 2rem; font-weight: bold; margin: 0;">0</p>
+        </div>
+        <div class="card-stat" style="background: #e8f5e9; padding: 1.5rem; border-radius: 8px; text-align: center;">
+            <h3>Ingresos (Este Mes)</h3>
+            <p id="dashIngresos" style="font-size: 2rem; font-weight: bold; margin: 0; color: green;">$0.00</p>
+        </div>
+        <div class="card-stat" style="background: #fff3e0; padding: 1.5rem; border-radius: 8px; text-align: center;">
+            <h3>Citas del Mes</h3>
+            <p id="dashCitas" style="font-size: 2rem; font-weight: bold; margin: 0;">0</p>
+        </div>
+    </div>
+
+    <div style="max-width: 600px; margin: 0 auto;">
+        <canvas id="graficaIngresos"></canvas>
+    </div>
+</section>
+
+
+        <section id="registro">
+            <h2 id="formPacienteTitulo">Gestión de Pacientes</h2>
+            <form id="formPaciente">
+                <input type="text" id="nombre" placeholder="Nombre" required />
+                <input type="text" id="apellidoPat" placeholder="Apellido paterno" required />
+                <input type="text" id="apellidoMat" placeholder="Apellido materno" required />
+                <input type="date" id="fechaNacimiento" required />
+                <input type="number" id="edad" placeholder="Edad" min="0" required />
+                <input type="tel" id="telefono" placeholder="Teléfono" required />
+                <div style="grid-column: 1 / -1;"><label for="enfermedades">Enfermedades (separadas por coma)</label><input type="text" id="enfermedades" /></div>
+                <div style="grid-column: 1 / -1;"><label for="medicamentos">Medicamentos (separadas por coma)</label><input type="text" id="medicamentos" /></div>
+                <div style="grid-column: 1 / -1;"><label for="alergias">Alergias (separadas por coma)</label><input type="text" id="alergias" /></div>
+                <button type="submit">Guardar Paciente</button>
+            </form>
+        </section>
+
+        <section id="listaPacientes">
+            <h2>Pacientes Registrados</h2>
+
+            <input type="search" id="inputBusquedaPaciente" 
+           placeholder="Buscar paciente por nombre..." 
+           style="width: 100%; padding: 0.8rem; margin-bottom: 1rem; box-sizing: border-box; font-size: 1rem;">
+            <div id="tablaPacientesContainer"><p>Cargando...</p></div>
+        </section>
+
+        <section id="registroCita">
+            <h2 id="formCitaTitulo">Registrar Cita</h2>
+            <form id="formCita">
+                <label for="idPacienteCita">ID del Paciente</label>
+                <input type="text" id="idPacienteCita" placeholder="Pega el ID de un paciente existente" required />
+                <label for="fechaHoraCita">Fecha y hora</label>
+                <input type="datetime-local" id="fechaHoraCita" required />
+                <label for="motivoCita">Motivo</label>
+                <input type="text" id="motivoCita" placeholder="Ej: Revisión general, limpieza" required />
+                <label for="estadoCita">Estado</label>
+                <select id="estadoCita" required>
+                    <option value="programada" selected>Programada</option>
+                    <option value="realizada">Realizada</option>
+                    <option value="cancelada">Cancelada</option>
+                </select>
+                <button type="submit">Guardar Cita</button>
+            </form>
+        </section>
+
+        <section id="registroTratamiento">
+            <h2 id="formTratamientoTitulo">Registrar Tratamiento</h2>
+            <form id="formTratamiento">
+                <label for="nombreTratamiento">Nombre del Tratamiento</label>
+                <input type="text" id="nombreTratamiento" placeholder="Ej: Blanqueamiento dental" required />
+                <label for="categoriaTratamiento">Categoría</label>
+                <select id="categoriaTratamiento" required>
+                    <option value="Prevención">Prevención</option>
+                    <option value="Restauración">Restauración</option>
+                    <option value="Estética">Estética</option>
+                    <option value="Ortodoncia">Ortodoncia</option>
+                    <option value="Cirugía">Cirugía</option>
+                </select>
+                <label for="descripcionTratamiento">Descripción</label>
+                <textarea id="descripcionTratamiento" placeholder="Detalles del tratamiento..." required></textarea>
+                <label for="precioTratamiento">Precio (MXN)</label>
+                <input type="number" id="precioTratamiento" min="0" step="0.01" placeholder="Ej: 1500.50" required />
+                <label for="duracionValor">Duración Estimada</label>
+                <div>
+                    <input type="number" id="duracionValor" min="1" placeholder="Valor" required />
+                    <select id="duracionUnidad" required>
+                        <option value="minutos">Minutos</option>
+                        <option value="sesiones">Sesiones</option>
+                        <option value="días">Días</option>
+                        <option value="meses">Meses</option>
+                    </select>
+                </div>
+                <button type="submit">Guardar Tratamiento</button>
+            </form>
+        </section>
+
+        <section id="listaTratamientos">
+            <h2>Catálogo de Tratamientos</h2>
+            <div id="tablaTratamientosContainer"></div>
+        </section>
+
+      
+
+        <section id="registroAbono">
+            
+            <h2 id="formAbonoTitulo">Registrar Abono a Cuenta</h2>
+
+            <form id="formAbono">
+                <label for="idPacienteAbono">ID del Paciente</label>
+                <input type="text" id="idPacienteAbono" placeholder="ID del paciente que abona" required />
+                <label for="idTratamientoAbono">ID del Tratamiento (Opcional)</label>
+                <input type="text" id="idTratamientoAbono" placeholder="Si el abono es para un tratamiento específico" />
+                <label for="fechaAbono">Fecha del Abono</label>
+                <input type="date" id="fechaAbono" required />
+                <label for="montoAbonado">Monto Abonado (MXN)</label>
+                <input type="number" id="montoAbonado" min="0" step="0.01" required />
+                <label for="saldoRestante">Saldo Restante (MXN)</label>
+                <input type="number" id="saldoRestante" min="0" step="0.01" required />
+                <label for="estadoAbono">Estado de la Cuenta</label>
+                <select id="estadoAbono" required>
+                    <option value="activo">Activo</option>
+                    <option value="liquidado">Liquidado</option>
+                </select>
+                
+                <button type="submit" id="btnSubmitAbono">Registrar Abono</button>
+            </form>
+        </section>
+
+    </main>
+
+    <div id="vistaHistorial" style="display: none;">
+        <button id="btnVolver">&larr; Volver a la lista principal</button>
+         <section id="registroCitaTratamiento">
+            <h2>Asignar Tratamiento a Cita</h2>
+            <form id="formCitaTratamiento">
+                <label for="idCitaAsignar">ID de la Cita</label>
+                <input type="text" id="idCitaAsignar" placeholder="Pega el ID de la cita aquí" required />
+                <label for="idTratamientoAsignar">ID del Tratamiento</label>
+                <input type="text" id="idTratamientoAsignar" placeholder="Pega el ID del tratamiento aquí" required />
+                <label for="observaciones">Observaciones</label>
+                <textarea id="observaciones" placeholder="Observaciones clínicas, notas del procedimiento..."></textarea>
+                <label for="resultado">Resultado</label>
+                <textarea id="resultado" placeholder="Resultado del tratamiento, pasos a seguir..."></textarea>
+                <button type="submit">Asignar Tratamiento</button>
+            </form>
+        </section>
+
+        <section id="registroPago">
+           
+            <h2 id="formPagoTitulo">Registrar Pago de Cita</h2>
+
+
+
+            <form id="formPago">
+                <label for="idCitaPago">ID de la Cita</label>
+                <input type="text" id="idCitaPago" placeholder="Pega el ID de la cita a pagar" required />
+                <label for="montoPago">Monto (MXN)</label>
+                <input type="number" id="montoPago" min="0" step="0.01" placeholder="Ej: 500.00" required />
+                <label for="fechaPago">Fecha de Pago</label>
+                <input type="date" id="fechaPago" required />
+                <label for="metodoPago">Método de Pago</label>
+                <select id="metodoPago" required>
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Tarjeta de Crédito/Débito">Tarjeta de Crédito/Débito</option>
+                    <option value="Transferencia">Transferencia</option>
+                </select>
+                
+                <button type="submit" id="btnSubmitPago">Registrar Pago</button>
+            </form>
+        </section>
+        <div id="historialContainer">
+            <div id="calendar"> <!-- CORREGIDO -->
+
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/es.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="/app/script.js?v=9"></script> 
+</body>
+</html>

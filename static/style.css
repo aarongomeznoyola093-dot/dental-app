@@ -1,0 +1,208 @@
+
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background-color: #f2f2f5;   
+}
+
+
+
+header {
+  display: flex;
+  align-items: center;
+  background-color: #5a3bbc;
+  color: white;
+  padding: 1.3rem 2rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+#logo-header {
+  height: 40px;
+  width: auto;
+  margin-right: 1.2rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: bold;
+}
+
+
+
+section {
+  background-color: white;
+  padding: 25px;
+  margin: 25px auto;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 1100px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+
+
+
+input, textarea, button, select {
+  display: block;
+  margin: 10px 0;
+  padding: 10px;
+  width: 100%;
+  max-width: 450px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 15px;
+}
+
+
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+th, td {
+  border: 1px solid #dadada;
+  padding: 10px;
+  text-align: left;
+}
+
+th {
+  background-color: #5a3bbc; /* Morado */
+  color: white;
+}
+
+
+
+.fc {
+  font-family: Arial, sans-serif;
+}
+
+.fc-toolbar-title {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #333;
+  text-transform: uppercase; 
+}
+
+.fc-button {
+  background-color: #5a3bbc !important;
+  border: none !important;
+  color: white !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+}
+
+.fc-button:hover {
+  background-color: #462f99 !important;
+}
+
+.fc-event {
+  background-color: #3da5ff !important; 
+  border: none !important;
+  color: white !important;
+  font-weight: bold !important;
+  border-radius: 6px !important;
+  padding: 3px 6px;
+}
+
+.fc-timegrid-slot {
+  height: 35px !important; 
+}
+
+
+.fc-timegrid-now-indicator-line {
+  border-color: red !important;
+}
+
+
+#calendar {
+  margin: auto;
+  max-width: 1100px;
+}
+
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background-color: #f2f2f5;
+}
+
+
+
+header {
+  display: flex;
+  align-items: center;
+  background-color: #5a3bbc;
+  color: white;
+  padding: 1.3rem 2rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+#logo-header {
+  height: 55px;
+  width: auto;
+  margin-right: 1.2rem;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: bold;
+}
+
+
+
+section {
+  background-color: white;
+  padding: 25px;
+  margin: 25px auto;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 1100px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+
+
+
+.fc {
+  font-family: Arial, sans-serif;
+}
+
+.fc-toolbar-title {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #333;
+  text-transform: uppercase;
+}
+
+.fc-button {
+  background-color: #5a3bbc !important;
+  border: none !important;
+  color: white !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+}
+
+.fc-button:hover {
+  background-color: #462f99 !important;
+}
+
+.fc-event {
+  background-color: #3da5ff !important;
+  border: none !important;
+  color: white !important;
+  font-weight: bold !important;
+  border-radius: 6px !important;
+  padding: 4px 6px;
+}
+
+.fc-timegrid-slot {
+  height: 38px !important;
+}
+
+.fc-timegrid-now-indicator-line {
+  border-color: red !important;
+}
+

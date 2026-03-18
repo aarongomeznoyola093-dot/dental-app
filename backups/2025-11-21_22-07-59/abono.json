@@ -1,0 +1,11 @@
+[
+    {
+        "id_paciente": "6cac2e81-3b03-4278-a75f-b4b8d678dd70",
+        "id_abono": "54e604d7-8954-40dd-a6db-2d988262af74",
+        "estado": "liquidado",
+        "fecha_abono": "2025-11-12",
+        "id_tratamiento": "d239f1f6-239b-4ae1-8abb-a2e9cd43513a",
+        "monto_abonado": 450.0,
+        "saldo_restante": 0.0
+    }
+]

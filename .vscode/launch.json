@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Iniciar Servidor FastAPI",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "conexionBD:app",
+                "--reload"
+            ],
+            "jinja": true
+        }
+    ]
+}
+
