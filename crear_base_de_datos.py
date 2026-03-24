@@ -2,43 +2,47 @@ import uuid
 import logging
 from passlib.context import CryptContext
 from cassandra.cluster import Cluster
-from app.db_session import connect_to_db, get_session
+from cassandra.auth import PlainTextAuthProvider
+import os
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN DE ASTRA ---
+ASTRA_TOKEN = "AstraCS:RarYRzyPCdNNBMaBbSwJjozc:b973381ce1c2ab649ee7d5a6bb1e20dbe74a28cadd537391327422487803d685"  # Usa el token correcto
+ASTRA_SECURE_BUNDLE_PATH = "C:\proyecto-dental\secure-connect-dental-db.zip"  # Ajusta la ruta
+
+# --- CONFIGURACIÓN DE LA APP ---
 KEYSPACE = "consultorio_dental"
 ADMIN_USERNAME = "admin"
-ADMIN = "12345"
+ADMIN_PASSWORD = "12345"  # Cambia esto por una contraseña segura
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-# --- CONEXIÓN A CASSANDRA ---
+# --- CONEXIÓN A ASTRA ---
 try:
-    cluster = Cluster(['127.0.0.1'])
+    logging.info("Conectando a Astra...")
+    
+    # Configuración para Astra
+    cloud_config = {
+        'secure_connect_bundle': ASTRA_SECURE_BUNDLE_PATH
+    }
+    auth_provider = PlainTextAuthProvider('token', ASTRA_TOKEN)
+    
+    cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
     session = cluster.connect()
-    logging.info("Conexión inicial a Cassandra exitosa.")
-except Exception as e:
-    logging.error(f"No se pudo conectar con Cassandra. Error: {e}")
-    exit()
-
-try:
-    # Crear Keyspace
-    logging.info(f"Asegurando que el keyspace '{KEYSPACE}' exista...")
-    session.execute(f"""
-        CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
-        WITH replication = {{ 'class': 'SimpleStrategy', 'replication_factor': '1' }};
-    """)
+    logging.info("Conexión a Astra exitosa.")
+    
+    # Nota: En Astra el keyspace ya debería existir, si no, créalo con:
+    # session.execute(f"CREATE KEYSPACE IF NOT EXISTS {KEYSPACE} WITH replication = {{'class': 'NetworkTopologyStrategy', 'replication_factor': '1'}};")
+    
     session.set_keyspace(KEYSPACE)
-    logging.info("Keyspace listo.")
+    logging.info(f"Usando keyspace '{KEYSPACE}'.")
 
-    # -------------------------
-    # TABLAS DEL SISTEMA
-    # -------------------------
-
+    # -----------------------------------------
+    # CREACIÓN DE TABLAS (sigue igual)
+    # -----------------------------------------
     logging.info("Creando todas las tablas necesarias...")
 
     session.execute("""
@@ -115,7 +119,7 @@ try:
     """)
 
     # -----------------------------------------
-    # TABLA ADMINISTRADOR 100% CORREGIDA
+    # TABLA ADMINISTRADOR
     # -----------------------------------------
     session.execute("""
     CREATE TABLE IF NOT EXISTS administrador (
@@ -130,9 +134,9 @@ try:
     # Índice
     session.execute("CREATE INDEX IF NOT EXISTS admin_username_idx ON administrador (username);")
 
-    # -------------------------
+    # -----------------------------------------
     # REGISTRO ADMIN POR DEFECTO
-    # -------------------------
+    # -----------------------------------------
     rows = session.execute(
         "SELECT username FROM administrador WHERE username = %s ALLOW FILTERING",
         [ADMIN_USERNAME]
@@ -141,17 +145,17 @@ try:
     if rows.one():
         logging.info(f"El usuario administrador '{ADMIN_USERNAME}' ya existe.")
     else:
-        hashed_password = get_password_hash(ADMIN)
+        hashed_password = get_password_hash(ADMIN_PASSWORD)
         session.execute(
             "INSERT INTO administrador (id_admin, username, hashed_password, intentos_fallidos, bloqueado_hasta) VALUES (%s, %s, %s, %s, %s)",
             (uuid.uuid4(), ADMIN_USERNAME, hashed_password, 0, None)
         )
         logging.info(f"Administrador '{ADMIN_USERNAME}' creado correctamente.")
-        logging.info(f"Contraseña: {ADMIN}")
+        logging.info(f"Contraseña: {ADMIN_PASSWORD}")
 
-    # -------------------------
+    # -----------------------------------------
     # TABLA REGISTROS PENDIENTES
-    # -------------------------
+    # -----------------------------------------
     session.execute("""
     CREATE TABLE IF NOT EXISTS pending_registration (
         email text PRIMARY KEY,

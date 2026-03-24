@@ -157,7 +157,7 @@ window.addEventListener("load", () => {
 
         try {
             
-            const respuesta = await fetchWithAuth("/paciente");
+            const respuesta = await fetchWithAuth("/pacientes/");
             if (!respuesta.ok) throw new Error("Error del servidor");
 
             listaCompletaPacientes = await respuesta.json(); 
@@ -228,7 +228,7 @@ window.addEventListener("load", () => {
         container.innerHTML = '<p>Cargando historial...</p>';
         try {
             // RUTA CORREGIDA: Sin /api/v1
-            const respuesta = await fetchWithAuth(`/paciente/${id_paciente}/historial`);
+            const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}/historial`);
             if (!respuesta.ok) throw new Error("Error del servidor");
 
             historialPacienteActual = await respuesta.json(); 
@@ -336,7 +336,7 @@ window.addEventListener("load", () => {
     async function iniciarModoEdicion(id_paciente) {
         try {
             
-            const respuesta = await fetchWithAuth(`/paciente/${id_paciente}/historial`);
+            const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}/historial`);
             if (!respuesta.ok) throw new Error('No se pudo obtener la info del paciente.');
             const historial = await respuesta.json();
             const p = historial.paciente;
@@ -365,7 +365,7 @@ window.addEventListener("load", () => {
         if (!confirm("¿Seguro que quieres eliminar a este paciente y todos sus datos asociados?")) return;
         try {
             // RUTA CORREGIDA
-            const respuesta = await fetchWithAuth(`/paciente/${id_paciente}`, { method: 'DELETE' });
+            const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}`, { method: 'DELETE' });
             if (!respuesta.ok) throw new Error((await respuesta.json()).detail || "Error del servidor");
             const resultado = await respuesta.json();
             alert(resultado.mensaje);
@@ -425,7 +425,7 @@ window.addEventListener("load", () => {
     async function iniciarEdicionCita(id_cita) {
         try {
             
-            const respuesta = await fetchWithAuth(`/cita/${id_cita}`);
+            const respuesta = await fetchWithAuth(`/citas/${id_cita}`);
             if (!respuesta.ok) throw new Error('No se pudo obtener la info de la cita.');
             const c = await respuesta.json();
             const form = document.getElementById("formCita");
@@ -453,7 +453,7 @@ window.addEventListener("load", () => {
         if (!confirm("¿Seguro que quieres eliminar esta cita y sus datos asociados?")) return;
         try {
             
-            const respuesta = await fetchWithAuth(`/cita/${id_cita}`, { 
+            const respuesta = await fetchWithAuth(`/citas/${id_cita}`, { 
                 method: 'DELETE',
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ id_paciente: idPacienteActual })
@@ -486,7 +486,7 @@ window.addEventListener("load", () => {
                 alergias: textoALista(document.getElementById("alergias").value)
             };
             
-            const url = editId ? `/paciente/${editId}` : "/paciente";
+            const url = editId ? `/pacientes/${editId}` : "/pacientes/";
             const method = editId ? "PUT" : "POST";
             const body = editId ? pacienteData : { ...pacienteData, id_paciente: crypto.randomUUID() };
 
@@ -527,7 +527,7 @@ window.addEventListener("load", () => {
 
             if (editId) {
                 
-                const url = `/cita/${editId}`;
+                const url = `/citas/${editId}`;
                 try {
                     const respuesta = await fetchWithAuth(url, {
                         method: "PUT",
@@ -558,7 +558,7 @@ window.addEventListener("load", () => {
 
     async function guardarNuevaCita(citaBody, form, force = false) {
         
-        const url = force ? "/cita?force=true" : "/cita"; 
+        const url = force ? "/citas/?force=true" : "/citas/"; 
         try {
             const respuesta = await fetchWithAuth(url, {
                 method: "POST",
@@ -647,7 +647,7 @@ window.addEventListener("load", () => {
             };
             try {
                 
-                const respuesta = await fetchWithAuth("/cita-tratamiento", {
+                const respuesta = await fetchWithAuth("/citas/cita-tratamiento", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(relacion),
@@ -685,7 +685,7 @@ window.addEventListener("load", () => {
             };
             const method = editId ? "PUT" : "POST";
             
-            const url = "/pago";
+            const url = "/pagos/pago";
 
             try {
                 const respuesta = await fetchWithAuth(url, {
@@ -728,7 +728,7 @@ window.addEventListener("load", () => {
             };
             const method = editId ? "PUT" : "POST";
             
-            const url = "/abono";
+            const url = "/pagos/abono";
 
             try {
                 const respuesta = await fetchWithAuth(url, {
@@ -776,7 +776,7 @@ window.addEventListener("load", () => {
         const body = { id_paciente: idPacienteActual, id_cita: id_cita, id_pago: id_pago };
         try {
             
-            const respuesta = await fetchWithAuth("/pago", {
+            const respuesta = await fetchWithAuth("/pagos/pago", {
                 method: 'DELETE',
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body)
@@ -791,29 +791,76 @@ window.addEventListener("load", () => {
         }
     }
 
-    function iniciarEdicionAbono(id_abono) {
-        if (!historialPacienteActual) return;
-        const abono = historialPacienteActual.abonos.find(a => a.id_abono === id_abono);
-        if (!abono) { alert("No se encontró el abono para editar."); return; }
-        const form = document.getElementById("formAbono");
-        form.querySelector("#idPacienteAbono").value = abono.id_paciente;
-        form.querySelector("#idTratamientoAbono").value = abono.id_tratamiento || "";
-        form.querySelector("#fechaAbono").value = abono.fecha_abono;
-        form.querySelector("#montoAbonado").value = abono.monto_abonado;
-        form.querySelector("#saldoRestante").value = abono.saldo_restante;
-        form.querySelector("#estadoAbono").value = abono.estado;
-        form.setAttribute("data-edit-id", id_abono);
-        document.getElementById("formAbonoTitulo").textContent = "Actualizar Abono";
-        document.getElementById("btnSubmitAbono").textContent = "Actualizar Abono";
-        form.scrollIntoView({ behavior: 'smooth' });
+   function iniciarEdicionAbono(id_abono) {
+    console.log("🔵 iniciarEdicionAbono llamado con ID:", id_abono);
+    
+    if (!historialPacienteActual) {
+        console.log("❌ historialPacienteActual es null/undefined");
+        alert("Error: No hay historial cargado");
+        return;
     }
+    
+    console.log("📋 historialPacienteActual:", historialPacienteActual);
+    console.log("📋 Abonos disponibles:", historialPacienteActual.abonos);
+    
+    const abono = historialPacienteActual.abonos.find(a => a.id_abono === id_abono);
+    
+    if (!abono) {
+        console.log("❌ No se encontró el abono con ID:", id_abono);
+        alert("No se encontró el abono para editar.");
+        return;
+    }
+    
+    console.log("✅ Abono encontrado:", abono);
+    
+    const form = document.getElementById("formAbono");
+    if (!form) {
+        console.log("❌ No se encontró el formulario con id 'formAbono'");
+        alert("Error: No se encontró el formulario de abono");
+        return;
+    }
+    
+    console.log("✅ Formulario encontrado");
+    
+    const idPacienteInput = form.querySelector("#idPacienteAbono");
+    const idTratamientoInput = form.querySelector("#idTratamientoAbono");
+    const fechaInput = form.querySelector("#fechaAbono");
+    const montoInput = form.querySelector("#montoAbonado");
+    const saldoInput = form.querySelector("#saldoRestante");
+    const estadoSelect = form.querySelector("#estadoAbono");
+    
+    console.log("Campos del formulario:");
+    console.log("  idPacienteAbono:", idPacienteInput);
+    console.log("  fechaAbono:", fechaInput);
+    console.log("  montoAbonado:", montoInput);
+    console.log("  saldoRestante:", saldoInput);
+    console.log("  estadoAbono:", estadoSelect);
+    
+    if (idPacienteInput) idPacienteInput.value = abono.id_paciente;
+    if (idTratamientoInput) idTratamientoInput.value = abono.id_tratamiento || "";
+    if (fechaInput) fechaInput.value = abono.fecha_abono;
+    if (montoInput) montoInput.value = abono.monto_abonado;
+    if (saldoInput) saldoInput.value = abono.saldo_restante;
+    if (estadoSelect) estadoSelect.value = abono.estado;
+    
+    form.setAttribute("data-edit-id", id_abono);
+    
+    const titulo = document.getElementById("formAbonoTitulo");
+    if (titulo) titulo.textContent = "Actualizar Abono";
+    
+    const btnSubmit = document.getElementById("btnSubmitAbono");
+    if (btnSubmit) btnSubmit.textContent = "Actualizar Abono";
+    
+    form.scrollIntoView({ behavior: 'smooth' });
+    console.log("✅ Formulario llenado y desplazado");
+}
 
     async function eliminarAbono(id_abono) {
         if (!confirm("¿Seguro que quieres eliminar este abono?")) return;
         const body = { id_paciente: idPacienteActual, id_abono: id_abono };
         try {
         
-            const respuesta = await fetchWithAuth("/abono", {
+            const respuesta = await fetchWithAuth("/pagos/abono", {
                 method: 'DELETE',
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body)
@@ -904,3 +951,11 @@ window.addEventListener("load", () => {
 
     init();
 });
+
+
+
+
+
+
+
+

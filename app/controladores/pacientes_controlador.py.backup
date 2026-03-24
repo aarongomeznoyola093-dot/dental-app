@@ -1,0 +1,876 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Request # <-- IMPORTANTE: Request
+from fastapi.security import OAuth2PasswordRequestForm
+import uuid
+import logging
+from app.servicios import email_servicio
+from app.servicios.auth_servicio import ALLOWED_ADMIN_EMAIL
+from app.db_session import get_db_session
+from app.servicios import auth_servicio
+import re
+import random
+from datetime import datetime, timedelta, timezone
+from pydantic import BaseModel, EmailStr
+
+from app.limiter import limiter 
+
+router = APIRouter(prefix="/pacientes", tags=["Pacientes"])
+
+# --- LOGIN ---
+@router.post("/token")
+@limiter.limit("5/minute") 
+async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()): 
+    
+    session = get_db_session()
+    
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
+
+    # 2. Buscar usuario
+    user_row = session.execute("SELECT * FROM administrador WHERE username = %s ALLOW FILTERING", [form_data.username]).one()
+
+    if not user_row:
+        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
+    # 3. Verificar si está BLOQUEADO
+    bloqueado_hasta = user_row.get('bloqueado_hasta')
+    if bloqueado_hasta and bloqueado_hasta > datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Cuenta bloqueada temporalmente. Intenta en 15 minutos.")
+
+    # 4. Verificar Contraseña
+    if not auth_servicio.verify_password(form_data.password, user_row['hashed_password']):
+        
+        intentos = (user_row.get('intentos_fallidos') or 0) + 1
+        admin_id = user_row['id_admin']
+        
+        if intentos >= 3:
+            # Bloquear por 15 minutos
+            bloqueo = datetime.utcnow() + timedelta(minutes=15)
+            session.execute("UPDATE administrador SET intentos_fallidos = 0, bloqueado_hasta = %s WHERE id_admin = %s", (bloqueo, admin_id))
+            raise HTTPException(status_code=400, detail="Has fallado 3 veces. Cuenta bloqueada por 15 min.")
+        else:
+            session.execute("UPDATE administrador SET intentos_fallidos = %s WHERE id_admin = %s", (intentos, admin_id))
+            raise HTTPException(status_code=401, detail=f"Contraseña incorrecta. Intento {intentos}/3")
+
+    if user_row.get('intentos_fallidos', 0) != 0:
+        session.execute("UPDATE administrador SET intentos_fallidos = 0, bloqueado_hasta = null WHERE id_admin = %s", [user_row['id_admin']])
+    
+    # Generar Token
+    access_token = auth_servicio.create_access_token(data={"sub": user_row['username']})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+class RegistrationRequest(BaseModel):
+    email: EmailStr
+
+class RegistrationCompletion(BaseModel):
+    email: EmailStr
+    password: str
+    verification_code: str
+
+
+
+@router.post("/request-registration-code")
+async def request_registration_code(request_data: RegistrationRequest):
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
+
+    if request_data.email.lower() != ALLOWED_ADMIN_EMAIL.lower():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este correo electrónico no está autorizado para registrarse."
+        )
+
+    
+    code = str(random.randint(100000, 999999))
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    
+    query = "INSERT INTO pending_registration (email, verification_code, expires_at) VALUES (%s, %s, %s)"
+    session.execute(query, (request_data.email.lower(), code, expires_at))
+
+    # Enviar correo
+    await email_servicio.send_verification_code(request_data.email, code)
+
+    return {"mensaje": "Se ha enviado un código de verificación a tu correo."}
+
+
+
+@router.post("/complete-registration")
+async def complete_registration(completion_data: RegistrationCompletion):
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
+    
+    email_lower = completion_data.email.lower()
+    if email_lower != ALLOWED_ADMIN_EMAIL.lower():
+        raise HTTPException(status_code=403, detail="Este correo no está autorizado.")
+
+    
+    password = completion_data.password
+    errores_pass = []
+    if len(password) < 8: errores_pass.append("Mínimo 8 caracteres")
+    if not re.search(r"[A-Z]", password): errores_pass.append("Una mayúscula")
+    if not re.search(r"\d", password): errores_pass.append("Un número")
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password): errores_pass.append("Un símbolo (!@#$...)")
+    
+    if errores_pass:
+        raise HTTPException(status_code=400, detail=f"La contraseña es débil. Falta: {', '.join(errores_pass)}")
+
+    
+    query = "SELECT verification_code, expires_at FROM pending_registration WHERE email = %s"
+    pending_reg = session.execute(query, [email_lower]).one()
+
+    if not pending_reg: 
+        raise HTTPException(status_code=400, detail="Solicitud no encontrada.")
+    
+    if pending_reg['verification_code'] != completion_data.verification_code: 
+        raise HTTPException(status_code=400, detail="Código incorrecto.")
+    
+    if pending_reg['expires_at'] < datetime.utcnow(): 
+        raise HTTPException(status_code=400, detail="Código expirado.")
+
+
+    hashed_password = auth_servicio.get_password_hash(password)
+
+    
+    check_admin = session.execute("SELECT id_admin FROM administrador WHERE username = %s ALLOW FILTERING", [email_lower]).one()
+
+    if check_admin:
+        session.execute("UPDATE administrador SET hashed_password = %s WHERE id_admin = %s", (hashed_password, check_admin['id_admin']))
+        mensaje = "¡Contraseña actualizada correctamente!"
+    else:
+        session.execute("INSERT INTO administrador (id_admin, username, hashed_password) VALUES (%s, %s, %s)", (uuid.uuid4(), email_lower, hashed_password))
+        mensaje = "¡Administrador registrado con éxito!"
+
+    session.execute("DELETE FROM pending_registration WHERE email = %s", [email_lower])
+    return {"mensaje": mensaje}
+
+from fastapi import APIRouter, Depends, Request, HTTPException, Query
+import uuid
+from datetime import date
+import logging
+from datetime import date, datetime, timedelta
+from cassandra.util import Date as CassandraDate  
+from app.db_session import get_db_session
+from app.servicios.auth_servicio import get_current_user 
+
+router = APIRouter(
+    tags=["Pacientes"],  
+    dependencies=[Depends(get_current_user)]  
+)
+
+
+session = get_db_session()
+
+
+
+
+@router.post("/cita")
+async def registrar_cita(data: Request, force: bool = Query(False)):
+    try:
+        body = await data.json()
+
+      
+        
+        try:
+            fecha_hora_obj = datetime.fromisoformat(body["fecha_hora"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Formato de fecha y hora inválido.")
+
+        # --- 3. INICIO DE LA VERIFICACIÓN ---
+        if not force:
+           
+            query_check = "SELECT id_cita FROM cita WHERE fecha_hora = %s ALLOW FILTERING"
+            cita_existente = session.execute(query_check, [fecha_hora_obj]).one()
+
+            if cita_existente:
+              
+                raise HTTPException(
+                    status_code=409, 
+                    detail="¡Conflicto! Ya existe una cita en ese horario. ¿Desea registrarla de todos modos?"
+                )
+        
+        query_insert = """
+        INSERT INTO cita (id_cita, id_paciente, fecha_hora, motivo, estado)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        session.execute(query_insert, (
+            uuid.UUID(body["id_cita"]), uuid.UUID(body["id_paciente"]),
+            fecha_hora_obj, 
+            body["motivo"], body["estado"]
+        ))
+        return {"mensaje": "Cita guardada correctamente"}
+
+    except HTTPException as http_exc:
+        raise http_exc 
+    except Exception as e:
+        logging.error(f" Error al procesar la cita: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.put("/cita/{id_cita}") 
+async def actualizar_cita(id_cita: uuid.UUID, data: Request):
+    try:
+        body = await data.json()
+        id_paciente_uuid = uuid.UUID(body["id_paciente"])
+        query = """
+        UPDATE cita SET fecha_hora = %s, motivo = %s, estado = %s
+        WHERE id_paciente = %s AND id_cita = %s
+        """
+        session.execute(query, (
+            body["fecha_hora"], body["motivo"], body["estado"],
+            id_paciente_uuid, id_cita
+        ))
+        return {"mensaje": "Cita actualizada correctamente"}
+    except Exception as e:
+        logging.error(f" Error al actualizar la cita {id_cita}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.delete("/cita/{id_cita}") 
+async def eliminar_cita(id_cita: uuid.UUID, data: Request):
+    try:
+        body = await data.json()
+        id_paciente_uuid = uuid.UUID(body["id_paciente"])
+
+        logging.info(f"Iniciando eliminación de cita {id_cita} para paciente {id_paciente_uuid}")
+
+        session.execute("DELETE FROM cita_tratamiento WHERE id_paciente = %s AND id_cita = %s", [id_paciente_uuid, id_cita])
+        session.execute("DELETE FROM pago WHERE id_paciente = %s AND id_cita = %s", [id_paciente_uuid, id_cita])
+        session.execute("DELETE FROM cita WHERE id_paciente = %s AND id_cita = %s", [id_paciente_uuid, id_cita])
+
+        return {"mensaje": "Cita eliminada correctamente"}
+    except Exception as e:
+        logging.error(f" Error al eliminar la cita {id_cita}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+    
+
+    
+@router.get("/citas/calendario")
+async def obtener_citas_calendario():
+
+    
+    def format_row_simple(row):
+        if not row: return {}
+        row_dict = dict(row)
+        for key, value in row_dict.items():
+            if isinstance(value, uuid.UUID):
+                row_dict[key] = str(value)
+
+          
+            elif isinstance(value, datetime): 
+                row_dict[key] = value 
+            
+            elif isinstance(value, CassandraDate):
+                row_dict[key] = value.date() 
+            
+        return row_dict
+    
+    
+
+    try:
+        # 1. Obtener todos los pacientes 
+        pacientes_rows = session.execute("SELECT id_paciente, nombre, apellido_pat FROM paciente")
+        pacientes_map = {
+            str(p['id_paciente']): f"{p['nombre']} {p['apellido_pat']}"
+            for p in pacientes_rows
+        }
+
+        # 2. Obtener todas las citas
+        citas_rows = session.execute("SELECT id_paciente, id_cita, fecha_hora, motivo, estado FROM cita")
+
+        eventos = []
+        for cita_row in citas_rows:
+            
+            if cita_row['estado'] != 'programada':
+                continue
+
+            
+            cita = format_row_simple(cita_row)
+
+            
+            paciente_nombre = pacientes_map.get(cita['id_paciente'], "Paciente Desconocido")
+            titulo_evento = f"{paciente_nombre} ({cita['motivo']})"
+
+            
+            start_time = cita.get('fecha_hora')
+            if not isinstance(start_time, datetime):
+                logging.warning(f"Cita {cita.get('id_cita')} omitida: fecha_hora inválida.")
+                continue
+
+            end_time = start_time + timedelta(hours=1) 
+
+            eventos.append({
+                "id": cita['id_cita'],
+                "title": titulo_evento,
+                "start": start_time.isoformat(), 
+                "end": end_time.isoformat()
+            })
+
+        return eventos
+    except Exception as e:
+        logging.error(f" Error al obtener citas para calendario: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.db_session import get_db_session
+from app.servicios.auth_servicio import get_current_user
+import uuid
+import logging
+from datetime import date, datetime
+
+router = APIRouter(
+    prefix="/paciente", 
+    tags=["Pacientes"], 
+    dependencies=[Depends(get_current_user)]
+)
+
+# --- UTILERÍA PARA FECHAS ---
+def convertir_fecha(fecha_obj):
+    """Convierte fechas de Cassandra a string para que el JSON no falle"""
+    if not fecha_obj:
+        return None
+    return str(fecha_obj)
+
+# --- 1. OBTENER TODOS LOS PACIENTES 
+@router.get("/") 
+async def obtener_pacientes():
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión BD")
+    
+    try:
+        rows = session.execute("SELECT * FROM paciente")
+        pacientes = []
+        
+        for row in rows:
+            paciente = {
+                "id_paciente": str(row['id_paciente']),
+                "nombre": row['nombre'],
+                "apellido_pat": row.get('apellido_pat', ''),
+                "apellido_mat": row.get('apellido_mat', ''),
+                "fecha_nacimiento": convertir_fecha(row.get('fecha_nacimiento')),
+                "edad": row.get('edad', 0),
+                "telefono": row.get('telefono', ''),
+                # Convertimos a lista para el JSON
+                "enfermedades": list(row.get('enfermedades', [])),
+                "medicamentos": list(row.get('medicamentos', [])),
+                "alergias": list(row.get('alergias', []))
+            }
+            pacientes.append(paciente)
+            
+        return pacientes
+
+    except Exception as e:
+        logging.error(f"Error al listar pacientes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{id_paciente}/historial")
+async def obtener_historial_paciente(id_paciente: uuid.UUID):
+    session = get_db_session()
+    if session is None: raise HTTPException(status_code=500, detail="Error BD")
+    
+    try:
+
+        row_p = session.execute("SELECT * FROM paciente WHERE id_paciente = %s", [id_paciente]).one()
+        if not row_p:
+            raise HTTPException(status_code=404, detail="Paciente no encontrado")
+            
+        paciente = {
+            "id_paciente": str(row_p['id_paciente']),
+            "nombre": row_p['nombre'],
+            "apellido_pat": row_p.get('apellido_pat', ''),
+            "apellido_mat": row_p.get('apellido_mat', ''),
+            "fecha_nacimiento": convertir_fecha(row_p.get('fecha_nacimiento')),
+            "edad": row_p.get('edad'),
+            "telefono": row_p.get('telefono'),
+            "enfermedades": list(row_p.get('enfermedades', [])),
+            "medicamentos": list(row_p.get('medicamentos', [])),
+            "alergias": list(row_p.get('alergias', []))
+        }
+
+        
+        citas = []
+        rows_c = session.execute("SELECT * FROM cita WHERE id_paciente = %s ALLOW FILTERING", [id_paciente])
+        
+        for rc in rows_c:
+            id_cita = rc['id_cita']
+            
+            
+            tratamientos_cita = []
+            rows_ct = session.execute("SELECT * FROM cita_tratamiento WHERE id_cita = %s ALLOW FILTERING", [id_cita])
+            for rct in rows_ct:
+                tratamientos_cita.append({
+                    "id_tratamiento": str(rct['id_tratamiento']),
+                    "observaciones": rct.get('observaciones', ''),
+                    "resultado": rct.get('resultado', '')
+                })
+
+            
+            pagos_cita = []
+            rows_pago = session.execute("SELECT * FROM pago WHERE id_cita = %s ALLOW FILTERING", [id_cita])
+            for rp in rows_pago:
+                pagos_cita.append({
+                    "id_pago": str(rp['id_pago']),
+                    "monto": float(rp['monto']) if rp['monto'] else 0.0,
+                    "fecha_pago": convertir_fecha(rp['fecha_pago']),
+                    "metodo_pago": rp.get('metodo_pago', '')
+                })
+
+            citas.append({
+                "id_cita": str(id_cita),
+                "fecha_hora": str(rc['fecha_hora']),
+                "motivo": rc['motivo'],
+                "estado": rc['estado'],
+                "tratamientos": tratamientos_cita,
+                "pagos": pagos_cita
+            })
+
+        
+        abonos = []
+        rows_a = session.execute("SELECT * FROM abono WHERE id_paciente = %s ALLOW FILTERING", [id_paciente])
+        for ra in rows_a:
+            abonos.append({
+                "id_abono": str(ra['id_abono']),
+                "fecha_abono": convertir_fecha(ra['fecha_abono']),
+                "monto_abonado": float(ra['monto_abonado']),
+                "saldo_restante": float(ra['saldo_restante']),
+                "estado": ra.get('estado', '')
+            })
+
+        return {
+            "paciente": paciente,
+            "citas_detalladas": citas,
+            "abonos": abonos
+        }
+
+    except Exception as e:
+        logging.error(f"Error historial: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/")
+async def registrar_paciente(data: Request):
+    session = get_db_session()
+    if session is None: raise HTTPException(status_code=500, detail="Error BD")
+
+    try:
+        body = await data.json()
+        fecha_nac = None
+        if body.get("fecha_nacimiento"):
+            fecha_nac = datetime.strptime(body["fecha_nacimiento"], "%Y-%m-%d").date()
+
+        query = """
+        INSERT INTO paciente (id_paciente, nombre, apellido_pat, apellido_mat, fecha_nacimiento, edad, telefono, enfermedades, medicamentos, alergias)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        session.execute(query, (
+            uuid.UUID(body["id_paciente"]),
+            body["nombre"],
+            body.get("apellido_pat", ""),
+            body.get("apellido_mat", ""),
+            fecha_nac,
+            int(body["edad"]),
+            body.get("telefono", ""),
+            
+            list(body.get("enfermedades", [])), 
+            list(body.get("medicamentos", [])),
+            list(body.get("alergias", []))
+        ))
+        return {"mensaje": "Paciente registrado correctamente"}
+    except Exception as e:
+        logging.error(f"Error registro paciente: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{id_paciente}")
+async def actualizar_paciente(id_paciente: uuid.UUID, data: Request):
+    session = get_db_session()
+    if session is None: raise HTTPException(status_code=500, detail="Error BD")
+
+    try:
+        body = await data.json()
+        fecha_nac = None
+        if body.get("fecha_nacimiento"):
+            fecha_nac = datetime.strptime(body["fecha_nacimiento"], "%Y-%m-%d").date()
+
+        query = """
+        UPDATE paciente SET nombre=%s, apellido_pat=%s, apellido_mat=%s, fecha_nacimiento=%s, edad=%s, telefono=%s, enfermedades=%s, medicamentos=%s, alergias=%s
+        WHERE id_paciente=%s
+        """
+        session.execute(query, (
+            body["nombre"],
+            body.get("apellido_pat", ""),
+            body.get("apellido_mat", ""),
+            fecha_nac,
+            int(body["edad"]),
+            body.get("telefono", ""),
+            
+            list(body.get("enfermedades", [])),
+            list(body.get("medicamentos", [])),
+            list(body.get("alergias", [])),
+            id_paciente
+        ))
+        return {"mensaje": "Paciente actualizado correctamente"}
+    except Exception as e:
+        logging.error(f"Error actualizar paciente: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{id_paciente}")
+async def eliminar_paciente(id_paciente: uuid.UUID):
+    session = get_db_session()
+    if session is None: raise HTTPException(status_code=500, detail="Error BD")
+
+    try:
+        session.execute("DELETE FROM paciente WHERE id_paciente = %s", [id_paciente])
+        return {"mensaje": "Paciente eliminado correctamente"}
+    except Exception as e:
+        logging.error(f"Error eliminar paciente: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi import APIRouter, Depends, Request, HTTPException
+import uuid
+from datetime import date
+from decimal import Decimal  
+import logging
+
+
+from app.db_session import get_db_session
+from app.servicios.auth_servicio import get_current_user 
+
+
+router = APIRouter(
+    tags=["Pacientes"],  
+    dependencies=[Depends(get_current_user)]  
+)
+
+session = get_db_session()
+
+@router.post("/cita-tratamiento")
+async def registrar_cita_tratamiento(data: Request):
+    try:
+        body = await data.json()
+        query = """
+        INSERT INTO cita_tratamiento (id_paciente, id_cita, id_tratamiento, observaciones, resultado)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        session.execute(query, (
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_cita"]),
+            uuid.UUID(body["id_tratamiento"]), body["observaciones"], body["resultado"]
+        ))
+        return {"mensaje": "Tratamiento asignado a la cita correctamente"}
+    except Exception as e:
+        logging.error(f" Error al procesar cita-tratamiento: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.post("/pago")
+async def registrar_pago(data: Request):
+    try:
+        body = await data.json()
+        query = """
+        INSERT INTO pago (id_paciente, id_cita, id_pago, monto, fecha_pago, metodo_pago)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        session.execute(query, (
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_cita"]),
+            uuid.UUID(body["id_pago"]), Decimal(body["monto"]),
+            date.fromisoformat(body["fecha_pago"]), body["metodo_pago"]
+        ))
+        return {"mensaje": "Pago registrado correctamente"}
+    except Exception as e:
+        logging.error(f" Error al procesar el pago: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.put("/pago")
+async def actualizar_pago(data: Request):
+    try:
+        body = await data.json()
+        query = """
+        UPDATE pago SET monto = %s, fecha_pago = %s, metodo_pago = %s
+        WHERE id_paciente = %s AND id_cita = %s AND id_pago = %s
+        """
+        session.execute(query, (
+            Decimal(body["monto"]), date.fromisoformat(body["fecha_pago"]), body["metodo_pago"],
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_cita"]), uuid.UUID(body["id_pago"])
+        ))
+        return {"mensaje": "Pago actualizado correctamente"}
+    except Exception as e:
+        logging.error(f" Error al actualizar el pago: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.delete("/pago")
+async def eliminar_pago(data: Request):
+    try:
+        body = await data.json()
+        query = "DELETE FROM pago WHERE id_paciente = %s AND id_cita = %s AND id_pago = %s"
+        session.execute(query, [
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_cita"]), uuid.UUID(body["id_pago"])
+        ])
+        return {"mensaje": "Pago eliminado correctamente"}
+    except Exception as e:
+        logging.error(f" Error al eliminar el pago: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+@router.post("/abono")
+async def registrar_abono(data: Request):
+    try:
+        body = await data.json()
+        id_tratamiento = uuid.UUID(body["id_tratamiento"]) if body.get("id_tratamiento") else None
+        query = """
+        INSERT INTO abono (id_paciente, id_abono, id_tratamiento, fecha_abono, monto_abonado, saldo_restante, estado)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        session.execute(query, (
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_abono"]),
+            id_tratamiento, date.fromisoformat(body["fecha_abono"]),
+            Decimal(body["monto_abonado"]), Decimal(body["saldo_restante"]),
+            body["estado"]
+        ))
+        return {"mensaje": "Abono registrado correctamente"}
+    except Exception as e:
+        logging.error(f" Error al procesar el abono: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.put("/abono")
+async def actualizar_abono(data: Request):
+    try:
+        body = await data.json()
+        id_tratamiento = uuid.UUID(body["id_tratamiento"]) if body.get("id_tratamiento") else None
+        query = """
+        UPDATE abono SET id_tratamiento = %s, fecha_abono = %s, monto_abonado = %s, saldo_restante = %s, estado = %s
+        WHERE id_paciente = %s AND id_abono = %s
+        """
+        session.execute(query, (
+            id_tratamiento, date.fromisoformat(body["fecha_abono"]), Decimal(body["monto_abonado"]),
+            Decimal(body["saldo_restante"]), body["estado"],
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_abono"])
+        ))
+        return {"mensaje": "Abono actualizado correctamente"}
+    except Exception as e:
+        logging.error(f" Error al actualizar el abono: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.delete("/abono")
+async def eliminar_abono(data: Request):
+    try:
+        body = await data.json()
+        query = "DELETE FROM abono WHERE id_paciente = %s AND id_abono = %s"
+        session.execute(query, [
+            uuid.UUID(body["id_paciente"]), uuid.UUID(body["id_abono"])
+        ])
+        return {"mensaje": "Abono eliminado correctamente"}
+    except Exception as e:
+        logging.error(f" Error al eliminar el abono: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+from fastapi import APIRouter, Depends, HTTPException
+from app.db_session import get_db_session
+from app.servicios.auth_servicio import get_current_user
+from datetime import datetime
+
+router = APIRouter(
+    prefix="/reportes", 
+    tags=["Pacientes"], 
+    dependencies=[Depends(get_current_user)]
+)
+
+
+def convertir_fecha(fecha_obj):
+    """Convierte fechas de Cassandra o texto a objetos datetime de Python"""
+    if not fecha_obj:
+        return None
+    
+    
+    if isinstance(fecha_obj, datetime):
+        return fecha_obj
+        
+    
+    if hasattr(fecha_obj, 'month') and hasattr(fecha_obj, 'year'):
+        return fecha_obj
+
+    
+    try:
+        return datetime.strptime(str(fecha_obj), '%Y-%m-%d')
+    except:
+        return None
+
+@router.get("/dashboard")
+async def obtener_datos_dashboard():
+    
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
+
+    try:
+        
+        rows = session.execute("SELECT id_paciente FROM paciente")
+        total_pacientes = len(list(rows))
+        
+        ahora = datetime.utcnow()
+        mes_actual = ahora.month
+        anio_actual = ahora.year
+        
+        ingresos = 0.0
+        citas_mes = 0
+
+        
+        pagos = session.execute("SELECT monto, fecha_pago FROM pago ALLOW FILTERING")
+        for p in pagos:
+            
+            fecha = convertir_fecha(p['fecha_pago'])
+            if fecha and fecha.month == mes_actual and fecha.year == anio_actual:
+                ingresos += float(p['monto'])
+
+        
+        abonos = session.execute("SELECT monto_abonado, fecha_abono FROM abono ALLOW FILTERING")
+        for a in abonos:
+            fecha = convertir_fecha(a['fecha_abono'])
+            if fecha and fecha.month == mes_actual and fecha.year == anio_actual:
+                ingresos += float(a['monto_abonado'])
+
+        
+        citas = session.execute("SELECT fecha_hora FROM cita ALLOW FILTERING")
+        for c in citas:
+            fecha = convertir_fecha(c['fecha_hora'])
+            if fecha and fecha.month == mes_actual and fecha.year == anio_actual:
+                citas_mes += 1
+
+        return {
+            "total_pacientes": total_pacientes,
+            "ingresos_mes": ingresos,
+            "citas_mes": citas_mes
+        }
+    except Exception as e:
+        print(f"Error en dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/dashboard/resumen")
+async def obtener_resumen_dashboard():
+    
+    return await obtener_datos_dashboard()
+from fastapi import APIRouter, Depends, Request, HTTPException
+import uuid
+from datetime import date
+from decimal import Decimal
+import logging
+
+
+from app.db_session import get_db_session
+from app.servicios.auth_servicio import get_current_user 
+
+
+router = APIRouter(
+    prefix="/tratamientos",
+    tags=["Pacientes"],
+    dependencies=[Depends(get_current_user)]
+)
+
+# --- RUTAS ---
+
+@router.post("/tratamiento")
+async def registrar_tratamiento(data: Request):
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión BD")
+
+    try:
+        body = await data.json()
+        query = """
+        INSERT INTO tratamiento (id_tratamiento, nombre, categoria, descripcion, precio, duracion_estimada)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+       
+        session.execute(query, (
+            uuid.UUID(body["id_tratamiento"]), 
+            body["nombre"], 
+            body["categoria"],
+            body["descripcion"], 
+            Decimal(str(body["precio"])), 
+            body["duracion_estimada"]
+        ))
+        return {"mensaje": "Tratamiento guardado correctamente"}
+    except Exception as e:
+        logging.error(f"Error al procesar el tratamiento: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.get("/")
+async def obtener_tratamientos():
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión BD")
+    
+    try:
+        rows = session.execute("SELECT * FROM tratamiento")
+        
+        tratamientos = []
+        
+        for row in rows:
+           
+            
+            
+            
+            precio_valor = 0.0
+            if hasattr(row, 'precio') and row.precio is not None:
+                precio_valor = float(row.precio)
+            elif hasattr(row, 'costo') and row.costo is not None: 
+                precio_valor = float(row.costo)
+            elif 'precio' in row and row['precio']: 
+                precio_valor = float(row['precio'])
+            elif 'costo' in row and row['costo']:
+                precio_valor = float(row['costo'])
+
+            tratamiento = {
+                "id_tratamiento": str(row['id_tratamiento']),
+                "nombre": row['nombre'],
+                "descripcion": row.get('descripcion', ''),
+                "costo": precio_valor, 
+                "precio": precio_valor,
+                "categoria": row.get('categoria', ''),
+                "duracion_estimada": row.get('duracion_estimada', '')
+            }
+            tratamientos.append(tratamiento)
+            
+        
+        return tratamientos 
+
+    except Exception as e:
+        logging.error(f"Error al cargar tratamientos: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/tratamiento/{id_tratamiento}")
+async def actualizar_tratamiento(id_tratamiento: uuid.UUID, data: Request):
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión BD")
+
+    try:
+        body = await data.json()
+        query = """
+        UPDATE tratamiento SET nombre = %s, categoria = %s, descripcion = %s, precio = %s, duracion_estimada = %s
+        WHERE id_tratamiento = %s
+        """
+        session.execute(query, (
+            body["nombre"], 
+            body["categoria"], 
+            body["descripcion"],
+            Decimal(str(body["precio"])), 
+            body["duracion_estimada"], 
+            id_tratamiento
+        ))
+        return {"mensaje": "Tratamiento actualizado correctamente"}
+    except Exception as e:
+        logging.error(f"Error al actualizar el tratamiento {id_tratamiento}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+@router.delete("/tratamiento/{id_tratamiento}")
+async def eliminar_tratamiento(id_tratamiento: uuid.UUID):
+    session = get_db_session()
+    if session is None:
+        raise HTTPException(status_code=500, detail="Error de conexión BD")
+
+    try:
+        session.execute("DELETE FROM tratamiento WHERE id_tratamiento = %s", [id_tratamiento])
+        return {"mensaje": "Tratamiento eliminado correctamente"}
+    except Exception as e:
+        logging.error(f"Error al eliminar el tratamiento {id_tratamiento}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")

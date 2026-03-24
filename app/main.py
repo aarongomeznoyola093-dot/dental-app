@@ -20,6 +20,7 @@ from app.controladores import citas_controlador
 from app.controladores import relaciones_pagos_controlador
 from app.controladores import tratamiento_controlador
 from app.controladores import reportes_controlador
+from app.controladores import pagos_controlador
 
 
 logging.basicConfig(level=logging.INFO)
@@ -54,7 +55,11 @@ Instrumentator().instrument(app).expose(app)
 
 @app.on_event("startup")
 def on_startup():
-    db_session.connect_to_db()
+    session = db_session.get_db_session()
+    if session:
+        print("✓ Conexión a Astra establecida en startup")
+    else:
+        print("✗ Error conectando a Astra en startup")
 
 @app.on_event("shutdown")
 def on_shutdown():
@@ -72,6 +77,7 @@ app.include_router(citas_controlador.router)
 app.include_router(relaciones_pagos_controlador.router)
 app.include_router(tratamiento_controlador.router)
 app.include_router(reportes_controlador.router)
+app.include_router(pagos_controlador.router)
 
 
 

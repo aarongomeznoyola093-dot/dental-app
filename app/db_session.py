@@ -1,46 +1,37 @@
-# app/db_session.py
+import os
 from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
 from cassandra.query import dict_factory
-import logging
-import sys
-from cassandra.policies import RoundRobinPolicy
+from dotenv import load_dotenv
 
-_session = None
+load_dotenv()
 
-def connect_to_db():
-    """
-    Se conecta a Cassandra y configura la sesión global.
-    """
+# Configuración de Astra (usando el token y bundle que ya funcionaron)
+ASTRA_TOKEN = os.getenv("ASTRA_TOKEN", "AstraCS:RarYRzyPCdNNBMaBbSwJjozc:b973381ce1c2ab649ee7d5a6bb1e20dbe74a28cadd537391327422487803d685")
+ASTRA_SECURE_BUNDLE_PATH = os.getenv("ASTRA_SECURE_BUNDLE_PATH", "secure-connect-dental-db.zip")
+KEYSPACE = os.getenv("KEYSPACE", "consultorio_dental")
+
+session = None
+
+def get_db_session():
+    global session
+    if session is None:
+        try:
+            print("--- CONECTANDO A ASTRA ---")
+            
+            cloud_config = {
+                'secure_connect_bundle': ASTRA_SECURE_BUNDLE_PATH
+            }
+            auth_provider = PlainTextAuthProvider('token', ASTRA_TOKEN)
+            
+            cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
+            session = cluster.connect(KEYSPACE)
+            session.row_factory = dict_factory
+            
+            print("--- CONEXIÓN EXITOSA A ASTRA ---")
+            
+        except Exception as e:
+            print(f"❌ Error conectando a Astra: {e}")
+            session = None
     
-    global _session
-    try:
-        
-        cluster = Cluster(
-            ['127.0.0.1'],
-            protocol_version=5,                  
-            load_balancing_policy=RoundRobinPolicy() 
-        )
-
-        _session = cluster.connect('consultorio_dental')
-        _session.row_factory = dict_factory
-        logging.info(" Conexión a Cassandra exitosa.")
-    except Exception as e:
-        logging.error(f" Error fatal al conectar con Cassandra: {e}")
-        sys.exit(1)
-def get_session():
-    """
-    Devuelve la sesión de Cassandra ya conectada.
-    """
-    if _session is None:
-        logging.warning(" La sesión de Cassandra no estaba iniciada. Conectando ahora...")
-        connect_to_db()
-    return _session
-
-def close_db_connection():
-    """
-    Cierra la conexión a Cassandra (útil para apagar limpiamente).
-    """
-    global _session
-    if _session:
-        _session.cluster.shutdown()
-        logging.info(" Conexión a Cassandra cerrada.")
+    return session
