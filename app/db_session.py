@@ -2,11 +2,11 @@ import os
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.query import dict_factory
-from dotenv import load_dotenv
 
-load_dotenv()
+# NO USAR dotenv en producción, Render ya tiene las variables
+# load_dotenv()  # COMENTADO o ELIMINADO
 
-# Configuración de Astra (usando el token y bundle que ya funcionaron)
+# Configuración de Astra - SOLO variables de entorno, SIN valores por defecto
 ASTRA_TOKEN = os.getenv("ASTRA_TOKEN")
 ASTRA_SECURE_BUNDLE_PATH = os.getenv("ASTRA_SECURE_BUNDLE_PATH")
 KEYSPACE = os.getenv("KEYSPACE", "consultorio_dental")
@@ -18,16 +18,23 @@ def get_db_session():
     if session is None:
         try:
             print("--- CONECTANDO A ASTRA ---")
-            print(f"🔍 ASTRA_TOKEN: {'*' * 10 if ASTRA_TOKEN else 'NO CONFIGURADO'}")
+            print(f"🔍 ASTRA_TOKEN: {'[CONFIGURADO]' if ASTRA_TOKEN else '[NO CONFIGURADO]'}")
             print(f"🔍 ASTRA_SECURE_BUNDLE_PATH: {ASTRA_SECURE_BUNDLE_PATH}")
             print(f"🔍 KEYSPACE: {KEYSPACE}")
             
-            # Validar que las variables estén configuradas
+            # Validación estricta
             if not ASTRA_TOKEN:
-                print("❌ Error: ASTRA_TOKEN no está configurado en las variables de entorno")
+                print("❌ ERROR CRÍTICO: ASTRA_TOKEN no está configurado")
                 return None
             if not ASTRA_SECURE_BUNDLE_PATH:
-                print("❌ Error: ASTRA_SECURE_BUNDLE_PATH no está configurado en las variables de entorno")
+                print("❌ ERROR CRÍTICO: ASTRA_SECURE_BUNDLE_PATH no está configurado")
+                return None
+            
+            # Verificar si el archivo existe
+            if os.path.exists(ASTRA_SECURE_BUNDLE_PATH):
+                print(f"✅ Archivo bundle encontrado: {ASTRA_SECURE_BUNDLE_PATH}")
+            else:
+                print(f"❌ Archivo bundle NO encontrado: {ASTRA_SECURE_BUNDLE_PATH}")
                 return None
             
             cloud_config = {
