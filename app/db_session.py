@@ -3,12 +3,9 @@ from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.query import dict_factory
 
-# NO USAR dotenv en producción, Render ya tiene las variables
-# load_dotenv()  # COMENTADO o ELIMINADO
-
-# Configuración de Astra - SOLO variables de entorno, SIN valores por defecto
+# Configuración de Astra - SOLO variables de entorno
 ASTRA_TOKEN = os.getenv("ASTRA_TOKEN")
-ASTRA_ENDPOINT = os.getenv("ASTRA_ENDPOINT")  # ← NUEVA variable
+ASTRA_ENDPOINT = os.getenv("ASTRA_ENDPOINT")
 KEYSPACE = os.getenv("KEYSPACE", "consultorio_dental")
 
 session = None
@@ -29,9 +26,11 @@ def get_db_session():
                 print("❌ ERROR: ASTRA_ENDPOINT no está configurado")
                 return None
             
-            # Extraer host del endpoint (sin https:// y sin /)
-            host = ASTRA_ENDPOINT.replace("https://", "bd8ae16a-c748-418b-b285-0529d4b18fa8-us-east-2.apps.astra.datastax.com").split("/")[0]
-            port = 9042  # Puerto por defecto de Cassandra
+            # Extraer el host correctamente (eliminar https:// y la parte después de la barra)
+            host = ASTRA_ENDPOINT.replace("https://", "").split("/")[0]
+            print(f"🔍 Host extraído: {host}")
+            
+            port = 9042
             
             auth_provider = PlainTextAuthProvider('token', ASTRA_TOKEN)
             
