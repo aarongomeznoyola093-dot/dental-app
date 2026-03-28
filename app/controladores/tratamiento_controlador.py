@@ -1,5 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, Request
-from app.db_session import get_db_session
+from app.database import get_db
+from sqlalchemy.orm import Session
 from app.servicios.auth_servicio import get_current_user
 import uuid
 import logging
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/tratamientos", tags=["Tratamientos"], dependencies=[
 
 @router.post("/tratamiento")
 async def registrar_tratamiento(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión BD")
     
@@ -34,7 +35,7 @@ async def registrar_tratamiento(data: Request):
 
 @router.get("/")
 async def obtener_tratamientos():
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión BD")
     
@@ -65,7 +66,7 @@ async def obtener_tratamientos():
 
 @router.put("/tratamiento/{id_tratamiento}")
 async def actualizar_tratamiento(id_tratamiento: uuid.UUID, data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión BD")
     
@@ -90,7 +91,7 @@ async def actualizar_tratamiento(id_tratamiento: uuid.UUID, data: Request):
 
 @router.delete("/tratamiento/{id_tratamiento}")
 async def eliminar_tratamiento(id_tratamiento: uuid.UUID):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión BD")
     
@@ -103,7 +104,7 @@ async def eliminar_tratamiento(id_tratamiento: uuid.UUID):
 
 @router.get("/tratamiento/{id_tratamiento}")
 async def obtener_tratamiento(id_tratamiento: uuid.UUID):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión BD")
     

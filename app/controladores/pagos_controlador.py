@@ -1,5 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, Request
-from app.db_session import get_db_session
+from app.database import get_db
+from sqlalchemy.orm import Session
 from app.servicios.auth_servicio import get_current_user
 import uuid
 import logging
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/pagos", tags=["Pagos"], dependencies=[Depends(get_cu
 
 @router.post("/pago")
 async def registrar_pago(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     try:
         
         body = await data.json()
@@ -32,7 +33,7 @@ async def registrar_pago(data: Request):
 
 @router.put("/pago")
 async def actualizar_pago(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     try:
         body = await data.json()
         query = """
@@ -50,7 +51,7 @@ async def actualizar_pago(data: Request):
 
 @router.delete("/pago")
 async def eliminar_pago(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     try:
         body = await data.json()
         query = "DELETE FROM pago WHERE id_paciente = %s AND id_cita = %s AND id_pago = %s"
@@ -64,7 +65,7 @@ async def eliminar_pago(data: Request):
 
 @router.post("/abono")
 async def registrar_abono(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     try:
         body = await data.json()
         id_tratamiento = uuid.UUID(body["id_tratamiento"]) if body.get("id_tratamiento") else None
@@ -85,7 +86,7 @@ async def registrar_abono(data: Request):
 
 @router.put("/abono")
 async def actualizar_abono(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     try:
         body = await data.json()
         id_tratamiento = uuid.UUID(body["id_tratamiento"]) if body.get("id_tratamiento") else None
@@ -105,7 +106,7 @@ async def actualizar_abono(data: Request):
 
 @router.delete("/abono")
 async def eliminar_abono(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     try:
         body = await data.json()
         query = "DELETE FROM abono WHERE id_paciente = %s AND id_abono = %s"
@@ -119,7 +120,7 @@ async def eliminar_abono(data: Request):
     
 @router.get("/abono/{id_abono}")
 async def obtener_abono(id_abono: uuid.UUID):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
     

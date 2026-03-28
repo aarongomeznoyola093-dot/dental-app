@@ -1,5 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, Request
-from app.db_session import get_db_session
+from app.database import get_db
+from sqlalchemy.orm import Session
 from app.servicios.auth_servicio import get_current_user
 import uuid
 import logging
@@ -14,7 +15,7 @@ def convertir_fecha(fecha_obj):
 
 @router.get("/")
 async def obtener_pacientes():
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión BD")
     
@@ -42,7 +43,7 @@ async def obtener_pacientes():
 
 @router.get("/{id_paciente}/historial")
 async def obtener_historial_paciente(id_paciente: uuid.UUID):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error BD")
     
@@ -119,7 +120,7 @@ async def obtener_historial_paciente(id_paciente: uuid.UUID):
 
 @router.post("/")
 async def registrar_paciente(data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error BD")
     
@@ -152,7 +153,7 @@ async def registrar_paciente(data: Request):
 
 @router.put("/{id_paciente}")
 async def actualizar_paciente(id_paciente: uuid.UUID, data: Request):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error BD")
     
@@ -185,7 +186,7 @@ async def actualizar_paciente(id_paciente: uuid.UUID, data: Request):
 
 @router.delete("/{id_paciente}")
 async def eliminar_paciente(id_paciente: uuid.UUID):
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error BD")
     

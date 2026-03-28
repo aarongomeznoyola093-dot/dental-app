@@ -1,5 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException
-from app.db_session import get_db_session
+from app.database import get_db
+from sqlalchemy.orm import Session
 from app.servicios.auth_servicio import get_current_user
 from datetime import datetime
 
@@ -17,7 +18,7 @@ def convertir_fecha(fecha_obj):
 
 @router.get("/dashboard")
 async def obtener_datos_dashboard():
-    session = get_db_session()
+    db: Session = Depends(get_db)
     if session is None:
         raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
     
