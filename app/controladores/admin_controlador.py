@@ -1,19 +1,20 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
-import uuid
-import logging
-from app.servicios import email_servicio
-from app.servicios.auth_servicio import ALLOWED_ADMIN_EMAIL
-from app.db_session import get_db_session
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Administrador, PendingRegistration
 from app.servicios import auth_servicio
-import re
+from app.servicios.email_servicio import send_verification_code
+from app.limiter import limiter
+import uuid
 import random
+import re
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, EmailStr
-from app.limiter import limiter
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
+# Modelos Pydantic
 class RegistrationRequest(BaseModel):
     email: EmailStr
 
@@ -22,103 +23,217 @@ class RegistrationCompletion(BaseModel):
     password: str
     verification_code: str
 
+
 @router.post("/token")
 @limiter.limit("5/minute")
-async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
-    session = get_db_session()
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
-    
-    user_row = session.execute("SELECT * FROM administrador WHERE username = %s ALLOW FILTERING", [form_data.username]).one()
-    
-    if not user_row:
-        raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-    
-    bloqueado_hasta = user_row.get('bloqueado_hasta')
-    if bloqueado_hasta and bloqueado_hasta > datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Cuenta bloqueada temporalmente. Intenta en 15 minutos.")
-    
-    if not auth_servicio.verify_password(form_data.password, user_row['hashed_password']):
-        intentos = (user_row.get('intentos_fallidos') or 0) + 1
-        admin_id = user_row['id_admin']
-        if intentos >= 3:
-            bloqueo = datetime.utcnow() + timedelta(minutes=15)
-            session.execute("UPDATE administrador SET intentos_fallidos = 0, bloqueado_hasta = %s WHERE id_admin = %s", (bloqueo, admin_id))
-            raise HTTPException(status_code=400, detail="Has fallado 3 veces. Cuenta bloqueada por 15 min.")
-        else:
-            session.execute("UPDATE administrador SET intentos_fallidos = %s WHERE id_admin = %s", (intentos, admin_id))
-            raise HTTPException(status_code=401, detail=f"Contraseña incorrecta. Intento {intentos}/3")
-    
-    if user_row.get('intentos_fallidos', 0) != 0:
-        session.execute("UPDATE administrador SET intentos_fallidos = 0, bloqueado_hasta = null WHERE id_admin = %s", [user_row['id_admin']])
-    
-    access_token = auth_servicio.create_access_token(data={"sub": user_row['username']})
-    return {"access_token": access_token, "token_type": "bearer"}
+async def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    """Login de administrador"""
+    try:
+        # Buscar administrador por username
+        admin = db.query(Administrador).filter(
+            Administrador.username == form_data.username
+        ).first()
+        
+        if not admin:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Credenciales incorrectas"
+            )
+        
+        # Verificar si está bloqueado
+        if admin.bloqueado_hasta and admin.bloqueado_hasta > datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cuenta bloqueada temporalmente. Intenta en 15 minutos."
+            )
+        
+        # Verificar contraseña
+        if not auth_servicio.verify_password(form_data.password, admin.hashed_password):
+            # Incrementar intentos fallidos
+            admin.intentos_fallidos = (admin.intentos_fallidos or 0) + 1
+            db.commit()
+            
+            if admin.intentos_fallidos >= 3:
+                # Bloquear por 15 minutos
+                admin.bloqueado_hasta = datetime.utcnow() + timedelta(minutes=15)
+                admin.intentos_fallidos = 0
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Has fallado 3 veces. Cuenta bloqueada por 15 min."
+                )
+            
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Contraseña incorrecta. Intento {admin.intentos_fallidos}/3"
+            )
+        
+        # Éxito: resetear intentos
+        admin.intentos_fallidos = 0
+        admin.bloqueado_hasta = None
+        db.commit()
+        
+        # Generar token
+        access_token = auth_servicio.create_access_token(data={"sub": admin.username})
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error en login: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor"
+        )
+
 
 @router.post("/request-registration-code")
-async def request_registration_code(request_data: RegistrationRequest):
-    session = get_db_session()
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
-    
-    if request_data.email.lower() != ALLOWED_ADMIN_EMAIL.lower():
+async def request_registration_code(
+    request_data: RegistrationRequest,
+    db: Session = Depends(get_db)
+):
+    """Solicitar código de verificación para registro"""
+    try:
+        # Verificar email autorizado
+        if request_data.email.lower() != auth_servicio.ALLOWED_ADMIN_EMAIL.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Este correo electrónico no está autorizado para registrarse."
+            )
+        
+        # Generar código y expiración
+        code = str(random.randint(100000, 999999))
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        
+        # Guardar en la base de datos (UPSERT)
+        pending = db.query(PendingRegistration).filter(
+            PendingRegistration.email == request_data.email.lower()
+        ).first()
+        
+        if pending:
+            pending.verification_code = code
+            pending.expires_at = expires_at
+        else:
+            pending = PendingRegistration(
+                email=request_data.email.lower(),
+                verification_code=code,
+                expires_at=expires_at
+            )
+            db.add(pending)
+        
+        db.commit()
+        
+        # Enviar correo
+        await send_verification_code(request_data.email, code)
+        
+        return {"mensaje": "Se ha enviado un código de verificación a tu correo."}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error en request registration: {e}")
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Este correo electrónico no está autorizado para registrarse."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor"
         )
-    
-    code = str(random.randint(100000, 999999))
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
-    
-    query = "INSERT INTO pending_registration (email, verification_code, expires_at) VALUES (%s, %s, %s)"
-    session.execute(query, (request_data.email.lower(), code, expires_at))
-    
-    await email_servicio.send_verification_code(request_data.email, code)
-    
-    return {"mensaje": "Se ha enviado un código de verificación a tu correo."}
+
 
 @router.post("/complete-registration")
-async def complete_registration(completion_data: RegistrationCompletion):
-    session = get_db_session()
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión con la base de datos")
-    
-    email_lower = completion_data.email.lower()
-    if email_lower != ALLOWED_ADMIN_EMAIL.lower():
-        raise HTTPException(status_code=403, detail="Este correo no está autorizado.")
-    
-    password = completion_data.password
-    errores_pass = []
-    if len(password) < 8: errores_pass.append("Mínimo 8 caracteres")
-    if not re.search(r"[A-Z]", password): errores_pass.append("Una mayúscula")
-    if not re.search(r"\d", password): errores_pass.append("Un número")
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password): errores_pass.append("Un símbolo (!@#$...)")
-    
-    if errores_pass:
-        raise HTTPException(status_code=400, detail=f"La contraseña es débil. Falta: {', '.join(errores_pass)}")
-    
-    query = "SELECT verification_code, expires_at FROM pending_registration WHERE email = %s"
-    pending_reg = session.execute(query, [email_lower]).one()
-    
-    if not pending_reg:
-        raise HTTPException(status_code=400, detail="Solicitud no encontrada.")
-    
-    if pending_reg['verification_code'] != completion_data.verification_code:
-        raise HTTPException(status_code=400, detail="Código incorrecto.")
-    
-    if pending_reg['expires_at'] < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Código expirado.")
-    
-    hashed_password = auth_servicio.get_password_hash(password)
-    
-    check_admin = session.execute("SELECT id_admin FROM administrador WHERE username = %s ALLOW FILTERING", [email_lower]).one()
-    
-    if check_admin:
-        session.execute("UPDATE administrador SET hashed_password = %s WHERE id_admin = %s", (hashed_password, check_admin['id_admin']))
-        mensaje = "¡Contraseña actualizada correctamente!"
-    else:
-        session.execute("INSERT INTO administrador (id_admin, username, hashed_password) VALUES (%s, %s, %s)", (uuid.uuid4(), email_lower, hashed_password))
-        mensaje = "¡Administrador registrado con éxito!"
-    
-    session.execute("DELETE FROM pending_registration WHERE email = %s", [email_lower])
-    return {"mensaje": mensaje}
+async def complete_registration(
+    completion_data: RegistrationCompletion,
+    db: Session = Depends(get_db)
+):
+    """Completar registro de administrador"""
+    try:
+        email_lower = completion_data.email.lower()
+        
+        # Verificar email autorizado
+        if email_lower != auth_servicio.ALLOWED_ADMIN_EMAIL.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Este correo no está autorizado."
+            )
+        
+        # Validar fortaleza de contraseña
+        password = completion_data.password
+        errores_pass = []
+        if len(password) < 8:
+            errores_pass.append("Mínimo 8 caracteres")
+        if not re.search(r"[A-Z]", password):
+            errores_pass.append("Una mayúscula")
+        if not re.search(r"\d", password):
+            errores_pass.append("Un número")
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+            errores_pass.append("Un símbolo (!@#$...)")
+        
+        if errores_pass:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"La contraseña es débil. Falta: {', '.join(errores_pass)}"
+            )
+        
+        # Verificar código pendiente
+        pending = db.query(PendingRegistration).filter(
+            PendingRegistration.email == email_lower
+        ).first()
+        
+        if not pending:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Solicitud no encontrada."
+            )
+        
+        if pending.verification_code != completion_data.verification_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Código incorrecto."
+            )
+        
+        if pending.expires_at < datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Código expirado."
+            )
+        
+        # Hashear contraseña
+        hashed_password = auth_servicio.get_password_hash(password)
+        
+        # Crear o actualizar administrador
+        admin = db.query(Administrador).filter(
+            Administrador.username == email_lower
+        ).first()
+        
+        if admin:
+            admin.hashed_password = hashed_password
+            mensaje = "¡Contraseña actualizada correctamente!"
+        else:
+            admin = Administrador(
+                id=uuid.uuid4(),
+                username=email_lower,
+                email=email_lower,
+                hashed_password=hashed_password,
+                intentos_fallidos=0
+            )
+            db.add(admin)
+            mensaje = "¡Administrador registrado con éxito!"
+        
+        # Eliminar registro pendiente
+        db.delete(pending)
+        db.commit()
+        
+        return {"mensaje": mensaje}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error en complete registration: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor"
+        )
