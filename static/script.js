@@ -382,7 +382,7 @@ window.addEventListener("load", () => {
     async function iniciarEdicionTratamiento(id_tratamiento) {
         try {
             
-            const respuesta = await fetchWithAuth(`/tratamientos/tratamiento/${id_tratamiento}`);
+            const respuesta = await fetchWithAuth(`/tratamientos/${id_tratamiento}`);
             
             if (!respuesta.ok) throw new Error('No se pudo obtener la info del tratamiento.');
             const t = await respuesta.json();
@@ -411,7 +411,7 @@ window.addEventListener("load", () => {
         if (!confirm("¿Seguro que quieres eliminar este tratamiento del catálogo?")) return;
         try {
             
-            const respuesta = await fetchWithAuth(`/tratamientos/tratamiento/${id_tratamiento}`, { method: 'DELETE' });
+            const respuesta = await fetchWithAuth(`/tratamientos/${id_tratamiento}`, { method: 'DELETE' });
             if (!respuesta.ok) throw new Error((await respuesta.json()).detail || "Error del servidor");
             const resultado = await respuesta.json();
             alert(resultado.mensaje);
@@ -589,45 +589,48 @@ window.addEventListener("load", () => {
     }
 
     function configurarFormularioTratamiento() {
-        const form = document.getElementById("formTratamiento");
-        if (!form) return;
-        form.addEventListener("submit", async function(e) {
-            e.preventDefault();
-            const editId = form.getAttribute("data-edit-id");
-            const duracionEstimada = {
-                [document.getElementById("duracionUnidad").value]: parseInt(document.getElementById("duracionValor").value)
-            };
-            const tratamiento = {
-                nombre: document.getElementById("nombreTratamiento").value,
-                categoria: document.getElementById("categoriaTratamiento").value,
-                descripcion: document.getElementById("descripcionTratamiento").value,
-                precio: document.getElementById("precioTratamiento").value,
-                duracion_estimada: duracionEstimada
-            };
-            
-            const url = editId ? `/tratamientos/tratamiento/${editId}` : "/tratamientos/tratamiento";
-            const method = editId ? "PUT" : "POST";
-            const body = editId ? tratamiento : { ...tratamiento, id_tratamiento: crypto.randomUUID() };
-            try {
-                const respuesta = await fetchWithAuth(url, {
-                    method: method,
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (!respuesta.ok) throw new Error((await respuesta.json()).detail || "Error del servidor");
-                const resultado = await respuesta.json();
-                alert(resultado.mensaje);
-                form.reset();
-                form.removeAttribute("data-edit-id");
-                document.getElementById("formTratamientoTitulo").textContent = "Registrar Tratamiento";
-                form.querySelector("button[type='submit']").textContent = "Guardar Tratamiento";
-                cargarTratamientos();
-            } catch (error) {
-                if (error.message.includes("Token")) return;
-                alert("Error al guardar el tratamiento: " + error.message);
-            }
-        });
-    }
+    const form = document.getElementById("formTratamiento");
+    if (!form) return;
+    form.addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const editId = form.getAttribute("data-edit-id");
+        
+        // ✅ CORRECCIÓN: Convertir a string
+        const duracionValor = document.getElementById("duracionValor").value;
+        const duracionUnidad = document.getElementById("duracionUnidad").value;
+        const duracionEstimada = `${duracionValor} ${duracionUnidad}`;
+        
+        const tratamiento = {
+            nombre: document.getElementById("nombreTratamiento").value,
+            categoria: document.getElementById("categoriaTratamiento").value,
+            descripcion: document.getElementById("descripcionTratamiento").value,
+            precio: document.getElementById("precioTratamiento").value,
+            duracion_estimada: duracionEstimada  // ✅ Ahora es string
+        };
+        
+        const url = editId ? `/tratamientos/${editId}` : "/tratamientos/";
+        const method = editId ? "PUT" : "POST";
+        const body = editId ? tratamiento : { ...tratamiento, id_tratamiento: crypto.randomUUID() };
+        try {
+            const respuesta = await fetchWithAuth(url, {
+                method: method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!respuesta.ok) throw new Error((await respuesta.json()).detail || "Error del servidor");
+            const resultado = await respuesta.json();
+            alert(resultado.mensaje);
+            form.reset();
+            form.removeAttribute("data-edit-id");
+            document.getElementById("formTratamientoTitulo").textContent = "Registrar Tratamiento";
+            form.querySelector("button[type='submit']").textContent = "Guardar Tratamiento";
+            cargarTratamientos();
+        } catch (error) {
+            if (error.message.includes("Token")) return;
+            alert("Error al guardar el tratamiento: " + error.message);
+        }
+    });
+}
 
     function configurarFormularioCitaTratamiento() {
         const form = document.getElementById("formCitaTratamiento");

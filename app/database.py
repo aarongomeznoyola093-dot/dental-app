@@ -1,19 +1,35 @@
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# Obtener la URL de la base de datos desde variables de entorno
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Detectar si estamos en producción o desarrollo
+IS_PRODUCTION = os.getenv("RENDER") == "true" or os.getenv("DATABASE_URL") is not None
 
-# Crear el engine de SQLAlchemy
-engine = create_engine(DATABASE_URL)
+if IS_PRODUCTION:
+    # PRODUCCIÓN (Render / PostgreSQL)
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    print("🔧 Modo PRODUCCIÓN - Conectando a la base de datos")
+
+    engine = create_engine(DATABASE_URL)
+
+else:
+    # DESARROLLO LOCAL (SQLite)
+    DATABASE_URL = "sqlite:///./consultorio_dental.db"
+    print("🔧 Modo DESARROLLO - Usando SQLite local")
+
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False}
+    )
+
+# Crear sesiones
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Base para los modelos
 Base = declarative_base()
 
-# Dependencia para obtener la sesión de la base de datos
+
+# Dependencia para FastAPI
 def get_db():
     db = SessionLocal()
     try:

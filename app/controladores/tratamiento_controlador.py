@@ -1,130 +1,145 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, Request
-from app.database import get_db
 from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Tratamiento
 from app.servicios.auth_servicio import get_current_user
 import uuid
-import logging
-from decimal import Decimal
 
-router = APIRouter(prefix="/tratamientos", tags=["Tratamientos"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/tratamientos",
+    tags=["Tratamientos"],
+    dependencies=[Depends(get_current_user)]
+)
 
-@router.post("/tratamiento")
-async def registrar_tratamiento(data: Request):
-    db: Session = Depends(get_db)
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión BD")
+@router.post("/")
+async def registrar_tratamiento(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
     
-    try:
-        body = await data.json()
-        query = """
-        INSERT INTO tratamiento (id_tratamiento, nombre, categoria, descripcion, precio, duracion_estimada)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
-        session.execute(query, (
-            uuid.UUID(body["id_tratamiento"]), 
-            body["nombre"], 
-            body["categoria"],
-            body["descripcion"], 
-            Decimal(str(body["precio"])), 
-            body["duracion_estimada"]
-        ))
-        return {"mensaje": "Tratamiento guardado correctamente"}
-    except Exception as e:
-        logging.error(f"Error al procesar el tratamiento: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-
+    # Convertir duracion_estimada si es un diccionario
+    duracion = data.get("duracion_estimada")
+    if isinstance(duracion, dict):
+        # Convertir diccionario a string, ej: {"meses": 48} -> "48 meses"
+        if "meses" in duracion:
+            duracion = f"{duracion['meses']} meses"
+        else:
+            duracion = str(duracion)
+    
+    nuevo_tratamiento = Tratamiento(
+        id=str(uuid.uuid4()),
+        nombre=data["nombre"],
+        categoria=data.get("categoria"),
+        descripcion=data.get("descripcion"),
+        precio=data["precio"],
+        duracion_estimada=duracion  # ✅ Ahora es string
+    )
+    
+    db.add(nuevo_tratamiento)
+    db.commit()
+    db.refresh(nuevo_tratamiento)
+    
+    return {"mensaje": "Tratamiento registrado correctamente"}
+# ==========================================================
+# OBTENER TODOS LOS TRATAMIENTOS
+# ==========================================================
 @router.get("/")
-async def obtener_tratamientos():
-    db: Session = Depends(get_db)
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión BD")
-    
-    try:
-        rows = session.execute("SELECT * FROM tratamiento")
-        tratamientos = []
-        for row in rows:
-            precio_valor = 0.0
-            if hasattr(row, 'precio') and row.precio is not None:
-                precio_valor = float(row.precio)
-            elif hasattr(row, 'costo') and row.costo is not None:
-                precio_valor = float(row.costo)
-            
-            tratamiento = {
-                "id_tratamiento": str(row['id_tratamiento']),
-                "nombre": row['nombre'],
-                "descripcion": row.get('descripcion', ''),
-                "costo": precio_valor,
-                "precio": precio_valor,
-                "categoria": row.get('categoria', ''),
-                "duracion_estimada": row.get('duracion_estimada', '')
-            }
-            tratamientos.append(tratamiento)
-        return tratamientos
-    except Exception as e:
-        logging.error(f"Error al cargar tratamientos: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+def obtener_tratamientos(db: Session = Depends(get_db)):
 
-@router.put("/tratamiento/{id_tratamiento}")
-async def actualizar_tratamiento(id_tratamiento: uuid.UUID, data: Request):
-    db: Session = Depends(get_db)
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión BD")
-    
-    try:
-        body = await data.json()
-        query = """
-        UPDATE tratamiento SET nombre = %s, categoria = %s, descripcion = %s, precio = %s, duracion_estimada = %s
-        WHERE id_tratamiento = %s
-        """
-        session.execute(query, (
-            body["nombre"], 
-            body["categoria"], 
-            body["descripcion"],
-            Decimal(str(body["precio"])), 
-            body["duracion_estimada"], 
-            id_tratamiento
-        ))
-        return {"mensaje": "Tratamiento actualizado correctamente"}
-    except Exception as e:
-        logging.error(f"Error al actualizar el tratamiento {id_tratamiento}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
+    tratamientos = db.query(Tratamiento).all()
 
-@router.delete("/tratamiento/{id_tratamiento}")
-async def eliminar_tratamiento(id_tratamiento: uuid.UUID):
-    db: Session = Depends(get_db)
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión BD")
-    
-    try:
-        session.execute("DELETE FROM tratamiento WHERE id_tratamiento = %s", [id_tratamiento])
-        return {"mensaje": "Tratamiento eliminado correctamente"}
-    except Exception as e:
-        logging.error(f"Error al eliminar el tratamiento {id_tratamiento}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
+    resultado = []
 
+    for t in tratamientos:
+        resultado.append({
+            "id_tratamiento": t.id,
+            "nombre": t.nombre,
+            "descripcion": t.descripcion,
+            "precio": t.precio,
+            "categoria": t.categoria,
+            "duracion_estimada": t.duracion_estimada
+        })
+
+    return resultado
+
+
+# ==========================================================
+# OBTENER TRATAMIENTO POR ID
+# ==========================================================
+@router.get("/{id_tratamiento}")
+def obtener_tratamiento(id_tratamiento: str, db: Session = Depends(get_db)):
+
+    tratamiento = db.query(Tratamiento).filter(Tratamiento.id == id_tratamiento).first()
+
+    if not tratamiento:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado")
+
+    return {
+        "id_tratamiento": tratamiento.id,
+        "nombre": tratamiento.nombre,
+        "descripcion": tratamiento.descripcion,
+        "precio": tratamiento.precio,
+        "categoria": tratamiento.categoria,
+        "duracion_estimada": tratamiento.duracion_estimada
+    }
+
+
+# ==========================================================
+# ACTUALIZAR TRATAMIENTO
+# ==========================================================
+@router.put("/{id_tratamiento}")
+async def actualizar_tratamiento(id_tratamiento: str, request: Request, db: Session = Depends(get_db)):
+
+    data = await request.json()
+
+    tratamiento = db.query(Tratamiento).filter(Tratamiento.id == id_tratamiento).first()
+
+    if not tratamiento:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado")
+
+    tratamiento.nombre = data["nombre"]
+    tratamiento.descripcion = data.get("descripcion")
+    tratamiento.precio = data["precio"]
+    tratamiento.categoria = data.get("categoria")
+    tratamiento.duracion_estimada = data.get("duracion_estimada")
+
+    db.commit()
+
+    return {"mensaje": "Tratamiento actualizado correctamente"}
+
+
+# ==========================================================
+# ELIMINAR TRATAMIENTO
+# ==========================================================
+@router.delete("/{id_tratamiento}")
+def eliminar_tratamiento(id_tratamiento: str, db: Session = Depends(get_db)):
+
+    tratamiento = db.query(Tratamiento).filter(Tratamiento.id == id_tratamiento).first()
+
+    if not tratamiento:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado")
+
+    db.delete(tratamiento)
+    db.commit()
+
+    return {"mensaje": "Tratamiento eliminado correctamente"}
+# ==========================================================
+# OBTENER TRATAMIENTO (RUTA COMPATIBLE CON FRONTEND)
+# ==========================================================
 @router.get("/tratamiento/{id_tratamiento}")
-async def obtener_tratamiento(id_tratamiento: uuid.UUID):
+async def obtener_tratamiento_compatible(
+    id_tratamiento: str, 
     db: Session = Depends(get_db)
-    if session is None:
-        raise HTTPException(status_code=500, detail="Error de conexión BD")
+):
+    """Obtiene un tratamiento - ruta compatible con frontend"""
+    tratamiento = db.query(Tratamiento).filter(Tratamiento.id == id_tratamiento).first()
     
-    try:
-        query = "SELECT * FROM tratamiento WHERE id_tratamiento = %s"
-        row = session.execute(query, [id_tratamiento]).one()
-        
-        if not row:
-            raise HTTPException(status_code=404, detail="Tratamiento no encontrado")
-        
-        tratamiento = {
-            "id_tratamiento": str(row['id_tratamiento']),
-            "nombre": row['nombre'],
-            "descripcion": row.get('descripcion', ''),
-            "precio": float(row['precio']) if row['precio'] else 0.0,
-            "categoria": row.get('categoria', ''),
-            "duracion_estimada": row.get('duracion_estimada', '')
-        }
-        return tratamiento
-        
-    except Exception as e:
-        logging.error(f"Error al obtener tratamiento {id_tratamiento}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    if not tratamiento:
+        raise HTTPException(status_code=404, detail="Tratamiento no encontrado")
+    
+    return {
+        "id_tratamiento": str(tratamiento.id),
+        "nombre": tratamiento.nombre,
+        "categoria": tratamiento.categoria,
+        "descripcion": tratamiento.descripcion,
+        "precio": float(tratamiento.precio) if tratamiento.precio else 0.0,
+        "duracion_estimada": tratamiento.duracion_estimada
+    }
