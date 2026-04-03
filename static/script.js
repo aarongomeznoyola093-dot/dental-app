@@ -258,9 +258,33 @@ window.addEventListener("load", () => {
         container.innerHTML = "<p style='color:red;'>Error al cargar el historial.</p>"; 
     }
 }
-
-    function generarHtmlHistorial(historial) {
+function generarHtmlHistorial(historial) {
     const p = historial.paciente;
+    
+    // Función para convertir string a array si es necesario
+    function convertirArray(valor) {
+        if (!valor) return [];
+        if (Array.isArray(valor)) return valor;
+        if (typeof valor === 'string') {
+            // Si es un string como '["ninguna"]' o "ninguna"
+            if (valor.startsWith('[') && valor.endsWith(']')) {
+                try {
+                    const parsed = JSON.parse(valor);
+                    if (Array.isArray(parsed)) return parsed;
+                } catch(e) {}
+            }
+            // Si es "ninguna" o está vacío
+            if (valor === "ninguna" || valor === "") return [];
+            // Si es un string simple
+            return [valor];
+        }
+        return [];
+    }
+    
+    const enfermedades = convertirArray(p.enfermedades);
+    const medicamentos = convertirArray(p.medicamentos);
+    const alergias = convertirArray(p.alergias);
+    
     let fechaNacimientoFormateada = "No especificada";
     if (p.fecha_nacimiento && typeof p.fecha_nacimiento === 'string') {
         const partes = p.fecha_nacimiento.split('-');
@@ -274,9 +298,9 @@ window.addEventListener("load", () => {
                     <p><strong>ID:</strong> <code>${p.id_paciente}</code></p>
                     <p><strong>Edad:</strong> ${p.edad} | <strong>Teléfono:</strong> ${p.telefono}</p>
                     <p><strong>Fecha de Nacimiento:</strong> ${fechaNacimientoFormateada}</p>
-                    <p><strong>Enfermedades:</strong> ${p.enfermedades?.join(', ') || 'Ninguna'}</p>
-                    <p><strong>Medicamentos:</strong> ${p.medicamentos?.join(', ') || 'Ninguno'}</p>
-                    <p><strong>Alergias:</strong> ${p.alergias?.join(', ') || 'Ninguna'}</p>
+                    <p><strong>Enfermedades:</strong> ${enfermedades.join(', ') || 'Ninguna'}</p>
+                    <p><strong>Medicamentos:</strong> ${medicamentos.join(', ') || 'Ninguno'}</p>
+                    <p><strong>Alergias:</strong> ${alergias.join(', ') || 'Ninguna'}</p>
                 </div>
                 <hr>
                 <h2>Citas y Procedimientos</h2>`;
