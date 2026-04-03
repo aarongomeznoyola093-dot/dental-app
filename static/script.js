@@ -401,34 +401,51 @@ function generarHtmlHistorial(historial) {
         document.querySelector("#formTratamiento button").textContent = "Guardar Tratamiento";
     }
 
-    async function iniciarModoEdicion(id_paciente) {
-        try {
-            
-            const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}/historial`);
-            if (!respuesta.ok) throw new Error('No se pudo obtener la info del paciente.');
-            const historial = await respuesta.json();
-            const p = historial.paciente;
-            formPaciente.querySelector("#nombre").value = p.nombre;
-            formPaciente.querySelector("#apellidoPat").value = p.apellido_pat;
-            formPaciente.querySelector("#apellidoMat").value = p.apellido_mat;
-            formPaciente.querySelector("#fechaNacimiento").value = p.fecha_nacimiento;
-            formPaciente.querySelector("#edad").value = p.edad;
-            formPaciente.querySelector("#telefono").value = p.telefono;
-            formPaciente.querySelector("#enfermedades").value = p.enfermedades?.join(", ") || "";
-            formPaciente.querySelector("#medicamentos").value = p.medicamentos?.join(", ") || "";
-            formPaciente.querySelector("#alergias").value = p.alergias?.join(", ") || "";
-            formPaciente.setAttribute("data-edit-id", id_paciente);
-            formPacienteTitulo.textContent = "Editando Paciente";
-            pacienteFormButton.textContent = "Actualizar Paciente";
-            vistaHistorial.style.display = 'none';
-            vistaPrincipal.style.display = 'block';
-            formPaciente.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } catch (error) {
-            if (error.message.includes("Token")) return;
-            alert("Error al cargar datos para editar: " + error.message);
+   async function iniciarModoEdicion(id_paciente) {
+    try {
+        const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}/historial`);
+        if (!respuesta.ok) throw new Error('No se pudo obtener la info del paciente.');
+        const historial = await respuesta.json();
+        const p = historial.paciente;
+        
+        // Función para convertir string a array
+        function convertirArray(valor) {
+            if (!valor) return [];
+            if (Array.isArray(valor)) return valor;
+            if (typeof valor === 'string') {
+                if (valor.startsWith('[') && valor.endsWith(']')) {
+                    try {
+                        const parsed = JSON.parse(valor);
+                        if (Array.isArray(parsed)) return parsed;
+                    } catch(e) {}
+                }
+                if (valor === "ninguna" || valor === "") return [];
+                return [valor];
+            }
+            return [];
         }
+        
+        formPaciente.querySelector("#nombre").value = p.nombre;
+        formPaciente.querySelector("#apellidoPat").value = p.apellido_pat;
+        formPaciente.querySelector("#apellidoMat").value = p.apellido_mat || "";
+        formPaciente.querySelector("#fechaNacimiento").value = p.fecha_nacimiento || "";
+        formPaciente.querySelector("#edad").value = p.edad;
+        formPaciente.querySelector("#telefono").value = p.telefono;
+        formPaciente.querySelector("#enfermedades").value = convertirArray(p.enfermedades).join(", ");
+        formPaciente.querySelector("#medicamentos").value = convertirArray(p.medicamentos).join(", ");
+        formPaciente.querySelector("#alergias").value = convertirArray(p.alergias).join(", ");
+        
+        formPaciente.setAttribute("data-edit-id", id_paciente);
+        formPacienteTitulo.textContent = "Editando Paciente";
+        pacienteFormButton.textContent = "Actualizar Paciente";
+        vistaHistorial.style.display = 'none';
+        vistaPrincipal.style.display = 'block';
+        formPaciente.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+        if (error.message.includes("Token")) return;
+        alert("Error al cargar datos para editar: " + error.message);
     }
-
+}
     async function eliminarPaciente(id_paciente) {
         if (!confirm("¿Seguro que quieres eliminar a este paciente y todos sus datos asociados?")) return;
         try {
