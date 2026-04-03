@@ -467,48 +467,55 @@ window.addEventListener("load", () => {
             alert("Error al eliminar la cita: " + error.message);
         }
     }
-
-    function configurarFormularioPaciente() {
-        if (!formPaciente) return;
-        formPaciente.addEventListener("submit", async function(e) {
-            e.preventDefault();
-            const editId = formPaciente.getAttribute("data-edit-id");
-            const textoALista = (texto) => texto ? texto.split(",").map(item => item.trim()).filter(Boolean) : [];
-            const pacienteData = {
-                nombre: document.getElementById("nombre").value,
-                apellido_pat: document.getElementById("apellidoPat").value,
-                apellido_mat: document.getElementById("apellidoMat").value,
-                fecha_nacimiento: document.getElementById("fechaNacimiento").value,
-                edad: parseInt(document.getElementById("edad").value),
-                telefono: document.getElementById("telefono").value,
-                enfermedades: textoALista(document.getElementById("enfermedades").value),
-                medicamentos: textoALista(document.getElementById("medicamentos").value),
-                alergias: textoALista(document.getElementById("alergias").value)
-            };
-            
-            const url = editId ? `/pacientes/${editId}` : "/pacientes/";
-            const method = editId ? "PUT" : "POST";
-            const body = editId ? pacienteData : { ...pacienteData, id_paciente: crypto.randomUUID() };
-
-            try {
-                const respuesta = await fetchWithAuth(url, {
-                    method: method,
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (!respuesta.ok) throw new Error((await respuesta.json()).detail || "Error del servidor");
-                const resultado = await respuesta.json();
-                alert(resultado.mensaje);
-                setTimeout(() => {
-                    salirModoEdicion();
-                    cargarPacientes();
-                }, 0);
-            } catch (error) {
-                if (error.message.includes("Token")) return;
-                alert("Error al guardar paciente: " + error.message);
+function configurarFormularioPaciente() {
+    if (!formPaciente) return;
+    formPaciente.addEventListener("submit", async function(e) {
+        e.preventDefault();
+        const editId = formPaciente.getAttribute("data-edit-id");
+        
+        // ✅ Función corregida
+        const textoALista = (texto) => {
+            if (!texto || texto.trim() === "" || texto.toLowerCase() === "ninguna") {
+                return [];
             }
-        });
-    }
+            return texto.split(",").map(item => item.trim()).filter(Boolean);
+        };
+        
+        const pacienteData = {
+            nombre: document.getElementById("nombre").value,
+            apellido_pat: document.getElementById("apellidoPat").value,
+            apellido_mat: document.getElementById("apellidoMat").value,
+            fecha_nacimiento: document.getElementById("fechaNacimiento").value,
+            edad: parseInt(document.getElementById("edad").value),
+            telefono: document.getElementById("telefono").value,
+            enfermedades: textoALista(document.getElementById("enfermedades").value),
+            medicamentos: textoALista(document.getElementById("medicamentos").value),
+            alergias: textoALista(document.getElementById("alergias").value)
+        };
+        
+        const url = editId ? `/pacientes/${editId}` : "/pacientes/";
+        const method = editId ? "PUT" : "POST";
+        const body = editId ? pacienteData : { ...pacienteData, id_paciente: crypto.randomUUID() };
+
+        try {
+            const respuesta = await fetchWithAuth(url, {
+                method: method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!respuesta.ok) throw new Error((await respuesta.json()).detail || "Error del servidor");
+            const resultado = await respuesta.json();
+            alert(resultado.mensaje);
+            setTimeout(() => {
+                salirModoEdicion();
+                cargarPacientes();
+            }, 0);
+        } catch (error) {
+            if (error.message.includes("Token")) return;
+            alert("Error al guardar paciente: " + error.message);
+        }
+    });
+}
 
     function configurarFormularioCita() {
         const form = document.getElementById("formCita");
