@@ -221,25 +221,43 @@ window.addEventListener("load", () => {
     }
     
     async function cargarHistorialPaciente(id_paciente) {
-        idPacienteActual = id_paciente;
-        vistaPrincipal.style.display = 'none';
-        vistaHistorial.style.display = 'block';
-        const container = document.getElementById('historialContainer');
-        container.innerHTML = '<p>Cargando historial...</p>';
-        try {
-            // RUTA CORREGIDA: Sin /api/v1
-            const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}/historial`);
-            if (!respuesta.ok) throw new Error("Error del servidor");
-
-            historialPacienteActual = await respuesta.json(); 
-            container.innerHTML = generarHtmlHistorial(historialPacienteActual); 
-
-        } catch (error) {
-            historialPacienteActual = null;
-            if (error.message.includes("Token")) return;
-            container.innerHTML = "<p style='color:red;'>Error al cargar el historial.</p>"; 
+    console.log("🔵 cargarHistorialPaciente llamado con ID:", id_paciente);
+    
+    idPacienteActual = id_paciente;
+    vistaPrincipal.style.display = 'none';
+    vistaHistorial.style.display = 'block';
+    const container = document.getElementById('historialContainer');
+    container.innerHTML = '<p>Cargando historial...</p>';
+    
+    try {
+        console.log("📡 Haciendo fetch a:", `/pacientes/${id_paciente}/historial`);
+        const respuesta = await fetchWithAuth(`/pacientes/${id_paciente}/historial`);
+        
+        console.log("📡 Respuesta recibida. Status:", respuesta.status);
+        
+        if (!respuesta.ok) {
+            console.error("❌ Error en respuesta:", respuesta.status);
+            throw new Error("Error del servidor");
         }
+
+        historialPacienteActual = await respuesta.json();
+        console.log("✅ Historial recibido:", historialPacienteActual);
+        console.log("📋 Citas:", historialPacienteActual.citas_detalladas);
+        console.log("📋 Abonos:", historialPacienteActual.abonos);
+        
+        const htmlGenerado = generarHtmlHistorial(historialPacienteActual);
+        console.log("✅ HTML generado, longitud:", htmlGenerado.length);
+        
+        container.innerHTML = htmlGenerado;
+        console.log("✅ Historial mostrado correctamente");
+
+    } catch (error) {
+        console.error("❌ Error en cargarHistorialPaciente:", error);
+        historialPacienteActual = null;
+        if (error.message.includes("Token")) return;
+        container.innerHTML = "<p style='color:red;'>Error al cargar el historial.</p>"; 
     }
+}
 
     function generarHtmlHistorial(historial) {
     const p = historial.paciente;
