@@ -5,6 +5,7 @@ from app.models import Paciente
 from app.servicios.auth_servicio import get_current_user
 import uuid
 from datetime import datetime
+import json
 
 router = APIRouter(
     prefix="/pacientes",
@@ -46,31 +47,54 @@ def obtener_pacientes(db: Session = Depends(get_db)):
 # ==========================================================
 @router.post("/")
 async def registrar_paciente(request: Request, db: Session = Depends(get_db)):
-
     data = await request.json()
-
+    
+    # Función para procesar listas (acepta string o lista)
+    def procesar_lista(valor):
+        if valor is None:
+            return []
+        if isinstance(valor, list):
+            return valor
+        if isinstance(valor, str):
+            # Si es "ninguna" o está vacío, retornar lista vacía
+            if valor.strip() == "" or valor.lower() == "ninguna":
+                return []
+            # Si es un string que parece JSON como '["ninguna"]'
+            if valor.startswith('[') and valor.endswith(']'):
+                try:
+                    parsed = json.loads(valor)
+                    if isinstance(parsed, list):
+                        # Si la lista contiene "ninguna", filtrarla
+                        return [item for item in parsed if item.lower() != "ninguna"]
+                    return parsed
+                except:
+                    pass
+            # Si es un string simple, crear lista con ese valor
+            return [valor] if valor.strip() else []
+        return []
+    
     fecha_nacimiento = None
     if data.get("fecha_nacimiento"):
         fecha_nacimiento = datetime.strptime(data["fecha_nacimiento"], "%Y-%m-%d").date()
-
+    
     nuevo_paciente = Paciente(
         id=str(uuid.uuid4()),
         nombre=data["nombre"],
         apellido_pat=data["apellido_pat"],
-        apellido_mat=data.get("apellido_mat"),
+        apellido_mat=data.get("apellido_mat", ""),
         fecha_nacimiento=fecha_nacimiento,
-        edad=data.get("edad"),
-        telefono=data.get("telefono"),
-        enfermedades=data.get("enfermedades", []),
-        medicamentos=data.get("medicamentos", []),
-        alergias=data.get("alergias", [])
+        edad=data.get("edad", 0),
+        telefono=data.get("telefono", ""),
+        enfermedades=procesar_lista(data.get("enfermedades", [])),
+        medicamentos=procesar_lista(data.get("medicamentos", [])),
+        alergias=procesar_lista(data.get("alergias", []))
     )
-
+    
     db.add(nuevo_paciente)
     db.commit()
     db.refresh(nuevo_paciente)
-
-    return {"mensaje": "Paciente registrado correctamente"}
+    
+    return {"mensaje": "Paciente registrado correctamente", "id": nuevo_paciente.id}
 
 
 # ==========================================================
