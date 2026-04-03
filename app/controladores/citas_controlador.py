@@ -17,46 +17,45 @@ router = APIRouter(
 # REGISTRAR CITA
 # ==========================================================
 @router.post("/")
-async def registrar_cita(request: Request, force: bool = Query(False), db: Session = Depends(get_db)):
-
+async def registrar_cita(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
-
-        # Convertir fecha
+        
+        # Limpiar el ID del paciente (eliminar espacios, tabs, saltos de línea)
+        id_paciente = data.get("id_paciente", "").strip()
+        
+        # Validar que sea un UUID válido
         try:
-            fecha_hora = datetime.fromisoformat(data["fecha_hora"])
+            import uuid
+            uuid.UUID(id_paciente)
         except:
-            raise HTTPException(status_code=400, detail="Formato de fecha inválido")
-
-        # Verificar conflicto de horario
-        if not force:
-            cita_existente = db.query(Cita).filter(Cita.fecha_hora == fecha_hora).first()
-
-            if cita_existente:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Ya existe una cita en ese horario. ¿Deseas guardarla de todos modos?"
-                )
-
+            raise HTTPException(status_code=400, detail=f"ID de paciente inválido: {id_paciente}")
+        
+        try:
+            fecha_hora_obj = datetime.fromisoformat(data["fecha_hora"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Formato de fecha y hora inválido.")
+        
+        # Crear la cita
         nueva_cita = Cita(
             id=str(uuid.uuid4()),
-            id_paciente=data["id_paciente"],
-            fecha_hora=fecha_hora,
+            id_paciente=id_paciente,
+            fecha_hora=fecha_hora_obj,
             motivo=data["motivo"],
-            estado=data["estado"]
+            estado=data.get("estado", "programada")
         )
-
+        
         db.add(nueva_cita)
         db.commit()
-        db.refresh(nueva_cita)
-
-        return {"mensaje": "Cita registrada correctamente"}
-
+        
+        return {"mensaje": "Cita registrada correctamente", "id": nueva_cita.id}
+        
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error al registrar cita: {e}")
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
+        print(f"Error al registrar cita: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==========================================================

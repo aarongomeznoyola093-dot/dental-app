@@ -524,7 +524,7 @@ function configurarFormularioPaciente() {
         form.addEventListener("submit", async function(e) {
             e.preventDefault();
             const editId = form.getAttribute("data-edit-id");
-            const idPacienteForm = document.getElementById("idPacienteCita").value;
+            const idPacienteForm = document.getElementById("idPacienteCita").value.trim();
             const citaData = {
                 id_paciente: idPacienteForm,
                 fecha_hora: document.getElementById("fechaHoraCita").value,
