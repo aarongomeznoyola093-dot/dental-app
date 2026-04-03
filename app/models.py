@@ -34,9 +34,9 @@ class Paciente(Base):
     edad = Column(Integer)
 
     # 🔥 CAMBIO IMPORTANTE (SQLite compatible)
-    enfermedades = Column(JSON, default=[])
-    medicamentos = Column(JSON, default=[])
-    alergias = Column(JSON, default=[])
+    enfermedades = Column(Text, default='[]')
+    medicamentos = Column(Text, default='[]')
+    alergias = Column(Text, default='[]')
 
     creado_en = Column(DateTime, default=datetime.utcnow)
 
