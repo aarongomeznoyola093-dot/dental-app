@@ -242,79 +242,105 @@ window.addEventListener("load", () => {
     }
 
     function generarHtmlHistorial(historial) {
-        const p = historial.paciente;
-        let fechaNacimientoFormateada = "No especificada";
-        if (p.fecha_nacimiento && typeof p.fecha_nacimiento === 'string') {
-            const partes = p.fecha_nacimiento.split('-');
-            if (partes.length === 3) fechaNacimientoFormateada = `${partes[2]}/${partes[1]}/${partes[0]}`;
-        }
-        let html = `<button class="btn-accion btn-editar-paciente" data-id="${p.id_paciente}">✏️ Editar Paciente</button><button class="btn-accion btn-eliminar-paciente" data-id="${p.id_paciente}">🗑️ Eliminar Paciente</button><h2>Historial de ${p.nombre} ${p.apellido_pat}</h2><div style="background: #f4f4f4; padding: 15px; border-radius: 8px;"><p><strong>ID:</strong> <code>${p.id_paciente}</code></p><p><strong>Edad:</strong> ${p.edad} | <strong>Teléfono:</strong> ${p.telefono}</p><p><strong>Fecha de Nacimiento:</strong> ${fechaNacimientoFormateada}</p><p><strong>Enfermedades:</strong> ${p.enfermedades?.join(', ') || 'Ninguna'}</p><p><strong>Medicamentos:</strong> ${p.medicamentos?.join(', ') || 'Ninguno'}</p><p><strong>Alergias:</strong> ${p.alergias?.join(', ') || 'Ninguna'}</p></div><hr><h2>Citas y Procedimientos</h2>`;
-        
-        if (!historial.citas_detalladas || historial.citas_detalladas.length === 0) {
-            html += '<p>No hay citas registradas.</p>';
-        } else {
-            historial.citas_detalladas.sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora)).forEach(cita => {
-                html += `<div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; border-radius: 8px;"><div><button class="btn-accion btn-editar-cita" data-id="${cita.id_cita}">✏️ Editar Cita</button><button class="btn-accion btn-eliminar-cita" data-id="${cita.id_cita}">🗑️ Eliminar Cita</button></div><h3>Cita del ${new Date(cita.fecha_hora).toLocaleString('es-ES')}</h3><p><strong>ID Cita:</strong> <code>${cita.id_cita}</code></p><p><strong>Motivo:</strong> ${cita.motivo} | <strong>Estado:</strong> ${cita.estado}</p><h4>Tratamientos en esta cita:</h4>`;
-                
-                if (cita.tratamientos?.length > 0) {
-                    cita.tratamientos.forEach(t => { html += `<p style="margin-left: 20px;">- <strong>Obs:</strong> ${t.observaciones || 'S/O'} (<strong>Res:</strong> ${t.resultado || 'Pendiente'})</p>`; });
-                } else { html += '<p style="margin-left: 20px;">Ningún tratamiento asignado.</p>'; }
-
-                html += '<h4>Pagos de esta cita:</h4>';
-                if (cita.pagos?.length > 0) {
-                    html += '<table style="font-size: 0.9em; margin-left: 20px; width: 90%;"><thead><tr><th>Monto</th><th>Fecha</th><th>Método</th><th>ID Pago</th><th>Acciones</th></tr></thead><tbody>';
-                    cita.pagos.forEach(pago => {
-                        let fechaPagoFmt = "N/A";
-                        if (pago.fecha_pago && typeof pago.fecha_pago === 'string') {
-                            const partes = pago.fecha_pago.split('-'); 
-                            if (partes.length === 3) fechaPagoFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
-                        }
-                        html += `<tr>
-                                    <td>$${pago.monto || 'N/A'}</td>
-                                    <td>${fechaPagoFmt}</td>
-                                    <td>${pago.metodo_pago || 'N/A'}</td>
-                                    <td><code>${pago.id_pago}</code></td>
-                                    <td>
-                                        <button class="btn-accion btn-editar-pago" data-id-pago="${pago.id_pago}" data-id-cita="${cita.id_cita}" title="Editar Pago">✏️</button>
-                                        <button class="btn-accion btn-eliminar-pago" data-id-pago="${pago.id_pago}" data-id-cita="${cita.id_cita}" title="Eliminar Pago">🗑️</button>
-                                    </td>
-                                 </tr>`;
-                    });
-                    html += '</tbody></table>';
-                } else {
-                    html += '<p style="margin-left: 20px;">No hay pagos registrados para esta cita.</p>';
-                }
-                html += '</div>';
-            });
-        }
-
-        html += '<hr><h2>Estado de Cuenta (Abonos)</h2>';
-        if (historial.abonos?.length > 0) {
-            html += '<table><thead><tr><th>Monto Abonado</th><th>Saldo Restante</th><th>Fecha</th><th>Estado</th><th>ID Abono</th><th>Acciones</th></tr></thead><tbody>';
-            historial.abonos.forEach(abono => {
-                let fechaAbonoFmt = "N/A";
-                if (abono.fecha_abono && typeof abono.fecha_abono === 'string') {
-                    const partes = abono.fecha_abono.split('-'); 
-                    if (partes.length === 3) fechaAbonoFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
-                }
-                html += `<tr>
-                            <td>$${abono.monto_abonado || '0'}</td>
-                            <td>$${abono.saldo_restante || '0'}</td>
-                            <td>${fechaAbonoFmt}</td>
-                            <td>${abono.estado || 'N/A'}</td>
-                            <td><code>${abono.id_abono}</code></td>
-                            <td>
-                                <button class="btn-accion btn-editar-abono" data-id-abono="${abono.id_abono}" title="Editar Abono">✏️</button>
-                                <button class="btn-accion btn-eliminar-abono" data-id-abono="${abono.id_abono}" title="Eliminar Abono">🗑️</button>
-                            </td>
-                         </tr>`;
-            });
-            html += '</tbody></table>';
-        } else {
-            html += '<p>No hay abonos generales registrados para este paciente.</p>';
-        }
-        return html;
+    const p = historial.paciente;
+    let fechaNacimientoFormateada = "No especificada";
+    if (p.fecha_nacimiento && typeof p.fecha_nacimiento === 'string') {
+        const partes = p.fecha_nacimiento.split('-');
+        if (partes.length === 3) fechaNacimientoFormateada = `${partes[2]}/${partes[1]}/${partes[0]}`;
     }
+    
+    let html = `<button class="btn-accion btn-editar-paciente" data-id="${p.id_paciente}">✏️ Editar Paciente</button>
+                <button class="btn-accion btn-eliminar-paciente" data-id="${p.id_paciente}">🗑️ Eliminar Paciente</button>
+                <h2>Historial de ${p.nombre} ${p.apellido_pat}</h2>
+                <div style="background: #f4f4f4; padding: 15px; border-radius: 8px;">
+                    <p><strong>ID:</strong> <code>${p.id_paciente}</code></p>
+                    <p><strong>Edad:</strong> ${p.edad} | <strong>Teléfono:</strong> ${p.telefono}</p>
+                    <p><strong>Fecha de Nacimiento:</strong> ${fechaNacimientoFormateada}</p>
+                    <p><strong>Enfermedades:</strong> ${p.enfermedades?.join(', ') || 'Ninguna'}</p>
+                    <p><strong>Medicamentos:</strong> ${p.medicamentos?.join(', ') || 'Ninguno'}</p>
+                    <p><strong>Alergias:</strong> ${p.alergias?.join(', ') || 'Ninguna'}</p>
+                </div>
+                <hr>
+                <h2>Citas y Procedimientos</h2>`;
+    
+    if (!historial.citas_detalladas || historial.citas_detalladas.length === 0) {
+        html += '<p>No hay citas registradas.</p>';
+    } else {
+        historial.citas_detalladas.sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora)).forEach(cita => {
+            html += `<div style="border: 1px solid #ccc; padding: 10px; margin-bottom: 15px; border-radius: 8px;">
+                        <div>
+                            <button class="btn-accion btn-editar-cita" data-id="${cita.id_cita}">✏️ Editar Cita</button>
+                            <button class="btn-accion btn-eliminar-cita" data-id="${cita.id_cita}">🗑️ Eliminar Cita</button>
+                        </div>
+                        <h3>Cita del ${new Date(cita.fecha_hora).toLocaleString('es-ES')}</h3>
+                        <p><strong>ID Cita:</strong> <code>${cita.id_cita}</code></p>
+                        <p><strong>Motivo:</strong> ${cita.motivo} | <strong>Estado:</strong> ${cita.estado}</p>
+                        <h4>Tratamientos en esta cita:</h4>`;
+            
+            if (cita.tratamientos?.length > 0) {
+                cita.tratamientos.forEach(t => { 
+                    html += `<p style="margin-left: 20px;">- <strong>Obs:</strong> ${t.observaciones || 'S/O'} (<strong>Res:</strong> ${t.resultado || 'Pendiente'})</p>`; 
+                });
+            } else { 
+                html += '<p style="margin-left: 20px;">Ningún tratamiento asignado.</p>'; 
+            }
+
+            html += '<h4>Pagos de esta cita:</h4>';
+            if (cita.pagos?.length > 0) {
+                html += '<table style="font-size: 0.9em; margin-left: 20px; width: 90%;"><thead><tr><th>Monto</th><th>Fecha</th><th>Método</th><th>ID Pago</th><th>Acciones</th></tr></thead><tbody>';
+                cita.pagos.forEach(pago => {
+                    let fechaPagoFmt = "N/A";
+                    if (pago.fecha_pago && typeof pago.fecha_pago === 'string') {
+                        const partes = pago.fecha_pago.split('-'); 
+                        if (partes.length === 3) fechaPagoFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+                    }
+                    html += `<tr>
+                                <td>$${pago.monto || 'N/A'}</td>
+                                <td>${fechaPagoFmt}</td>
+                                <td>${pago.metodo_pago || 'N/A'}</td>
+                                <td><code>${pago.id_pago}</code></td>
+                                <td>
+                                    <button class="btn-accion btn-editar-pago" data-id-pago="${pago.id_pago}" data-id-cita="${cita.id_cita}" title="Editar Pago">✏️</button>
+                                    <button class="btn-accion btn-eliminar-pago" data-id-pago="${pago.id_pago}" data-id-cita="${cita.id_cita}" title="Eliminar Pago">🗑️</button>
+                                </td>
+                              </tr>`;
+                });
+                html += '</tbody></table>';
+            } else {
+                html += '<p style="margin-left: 20px;">No hay pagos registrados para esta cita.</p>';
+            }
+            html += '</div>';
+        });
+    }
+
+    html += '<hr><h2>Estado de Cuenta (Abonos)</h2>';
+    if (historial.abonos?.length > 0) {
+        html += '<table style="width: 100%; border-collapse: collapse;"><thead><tr><th>Monto Abonado</th><th>Saldo Restante</th><th>Fecha</th><th>Estado</th><th>ID Abono</th><th>Acciones</th></tr></thead><tbody>';
+        historial.abonos.forEach(abono => {
+            let fechaAbonoFmt = "N/A";
+            if (abono.fecha_abono && typeof abono.fecha_abono === 'string') {
+                const partes = abono.fecha_abono.split('-'); 
+                if (partes.length === 3) fechaAbonoFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+            }
+            html += `<tr>
+                        <td>$${abono.monto_abonado || '0'}</td>
+                        <td>$${abono.saldo_restante || '0'}</td>
+                        <td>${fechaAbonoFmt}</td>
+                        <td>${abono.estado || 'N/A'}</td>
+                        <td><code>${abono.id_abono}</code></td>
+                        <td>
+                            <button class="btn-accion btn-editar-abono" data-id-abono="${abono.id_abono}" title="Editar Abono">✏️</button>
+                            <button class="btn-accion btn-eliminar-abono" data-id-abono="${abono.id_abono}" title="Eliminar Abono">🗑️</button>
+                        </td>
+                      </tr>`;
+        });
+        html += '</tbody></table>';
+    } else {
+        html += '<p>No hay abonos generales registrados para este paciente.</p>';
+    }
+    
+    return html;
+}
 
     function salirModoEdicion() {
         idPacienteActual = null;
